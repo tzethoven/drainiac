@@ -1,19 +1,27 @@
 # Current Feature
 
-Voice Capture
+None — Phase 1 complete
 
 ## Status
 
-In Progress
+Complete
 
 ## Goals
 
-- Implement hold-to-record button with real-time transcription
-- See @context/features/voice-capture.md for full spec
+Phase 1 (Voice Capture MVP) is fully implemented.
 
 ## Notes
 
 ## History
+
+### 2026-03-23 - Voice Capture
+- Implemented hold-to-record button with press/release interaction
+- Added real-time transcription via Web Speech API (interim + final results)
+- Persisted transcriptions to localStorage with timestamps
+- Added transcription history list with delete functionality
+- Browser support detection with fallback message
+- Prevented double-stop and mobile long-press context menu issues
+- Spec: @context/features/implemented/voice-capture.md
 
 ### 2026-03-23 - PWA Setup
 - Scaffolded SvelteKit project with TypeScript

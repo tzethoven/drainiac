@@ -5,11 +5,16 @@
     const speech = createSpeechRecognition();
     const store = createTranscriptionStore();
 
+    let stopping = false;
+
     function onPointerDown() {
+        stopping = false;
         speech.start();
     }
 
     async function onPointerUp() {
+        if (stopping || !speech.isRecording) return;
+        stopping = true;
         await new Promise((r) => setTimeout(r, 1000));
         const text = await speech.stop();
         if (text) {
@@ -49,6 +54,7 @@
                 onpointerdown={onPointerDown}
                 onpointerup={onPointerUp}
                 onpointerleave={onPointerUp}
+                oncontextmenu={(e) => e.preventDefault()}
             >
                 <svg
                     xmlns="http://www.w3.org/2000/svg"
