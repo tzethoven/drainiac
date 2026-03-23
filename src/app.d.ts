@@ -8,6 +8,11 @@ declare global {
 		// interface PageState {}
 		// interface Platform {}
 	}
+
+	interface Window {
+		SpeechRecognition: typeof SpeechRecognition;
+		webkitSpeechRecognition: typeof SpeechRecognition;
+	}
 }
 
 export {};

@@ -20,5 +20,4 @@ Set up Drainiac as a Progressive Web App using SvelteKit. The app should be inst
 
 ## References
 
-- Design system: `@context/screenshots/design-system.png`
 - Project overview: `@context/project-overview.md` (Phase 1 scope)

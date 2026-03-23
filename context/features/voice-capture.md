@@ -32,5 +32,4 @@ The core interaction of Phase 1. A single screen with a prominent hold-to-record
 ## References
 
 - Web Speech API: browser-native, no external dependencies required
-- Design system: `@context/screenshots/design-system.png`
 - Project overview: `@context/project-overview.md` (Phase 1 scope)

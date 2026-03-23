@@ -4,7 +4,7 @@ Voice Capture
 
 ## Status
 
-Next up
+In Progress
 
 ## Goals
 

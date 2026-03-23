@@ -100,11 +100,7 @@ Core features:
 
 ---
 
-## Design System
 
-The design system can be found in @context/screenshots/design-system.png
-
----
 
 ## Future Considerations
 
