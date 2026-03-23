@@ -8,11 +8,34 @@ The goal of the app is to **relieve mental load** and **optimise focus**. It tak
 
 ---
 
-## Core Features
+## Phase 1: Voice Capture MVP
 
-### 1. Voice-First Capture
+The first deliverable is a minimal PWA focused purely on voice capture.
 
-The primary input method is voice. The user speaks a thought, and the app uses Web Speech API combined with Claude API to detect intent and automatically route the thought to the right category.
+### Scope
+
+- **PWA setup** — installable, mobile-friendly, offline-capable shell
+- **Hold-to-record button** — a single prominent button that records the user's voice while pressed
+- **Real-time transcription** — uses the Web Speech API to transcribe speech as the user talks, displaying the text live on screen
+- **Persist transcriptions** — save completed transcriptions to localStorage
+
+### Out of scope for Phase 1
+
+- Authentication
+- AI intent detection / code word routing
+- Thought processing interface (todos, media queue, notes)
+- Habit tracker
+- Backend / database
+
+---
+
+## Full Product Vision
+
+The sections below describe the complete product Drainiac will become. Phase 1 is the first step toward this vision.
+
+### Voice-First Capture
+
+The primary input method is voice. The user speaks a thought, and the app uses Web Speech API combined with an AI layer to detect intent and automatically route the thought to the right category.
 
 **Code word system:** A set of optional trigger words at the start of a voice note signal intent explicitly, bypassing AI inference for speed and reliability. Examples:
 
@@ -28,62 +51,40 @@ The primary input method is voice. The user speaks a thought, and the app uses W
 
 When no code word is used, the AI infers intent from context and asks for confirmation before filing the thought.
 
----
-
-### 2. Thought Processing Interface
+### Thought Processing Interface
 
 A structured dashboard where captured thoughts are reviewed and acted on. Composed of several modules:
 
-#### ✅ Gamified To-Do List
-A task manager designed to make completion *feel good*. Features include:
-- Visual progress feedback
-- Priority and due date support
-- Satisfying completion interactions
-- To be defined gamification mechanics e.g. XP points / streaks / level system
+**Gamified To-Do List** — A task manager designed to make completion *feel good*. Visual progress feedback, priority/due date support, satisfying completion interactions, and gamification mechanics (XP, streaks, levels).
 
-#### 📚 Reading & Watch List
-A curated media queue for books, films, articles, podcasts, and other recommendations. Features include:
-- "What's next?" picker — surfaces one recommendation at a time to reduce decision fatigue
-- Source tracking (who recommended it, when)
-- Status tracking: *queued → in progress → done*
-- Ability to clear items from the queue, exact mechanic needs to be thought out more
+**Reading & Watch List** — A curated media queue for books, films, articles, podcasts. Features a "What's next?" picker to reduce decision fatigue, source tracking, and status tracking (queued / in progress / done).
 
-#### 🗒️ Ideas, Notes, Feelings & Free Thoughts
-A lightweight inbox for thoughts that don't fit a specific category. Supports:
-- Tagging and search
-- Ability to explore and process a thought or feeling
-- When I reach closure, an ability to document the conclusion in some way 
-- Promotion to other categories (e.g. "turn this note into a task")
-- Possibly AI-assisted summarisation or clustering
+**Ideas, Notes, Feelings & Free Thoughts** — A lightweight inbox for uncategorised thoughts. Supports tagging, search, exploration of thoughts/feelings, promotion to other categories, and potentially AI-assisted summarisation.
 
-All entries are stored either in the **work** or the **private** bucket. These two "environments" exist separately and no content should be shared between them.
+All entries are stored in either a **work** or **private** bucket. These two environments are fully isolated.
 
----
+### Habit & Impulse Control Tracker
 
-### 3. Habit & Impulse Control Tracker
-
-A dedicated module focused on **breaking addictive or unwanted behaviours**, not just tracking good ones. The design philosophy here is compassionate, non-punishing and offering alternatives.
+A dedicated module focused on **breaking addictive or unwanted behaviours**, not just tracking good ones. The design philosophy is compassionate, non-punishing, and offers alternatives.
 
 Core features:
-- Define habits to avoid, each with a configured *alternative suggestion* (e.g. "go for a short walk", "drink a glass of water", "open your reading list")
-- **Urge logging:** When the user feels the impulse, they open the app, log the urge, and are immediately offered the pre-set alternative
-- Streak tracking for avoidance, with recovery-aware messaging (no shame for breaking a streak)
-- Optional: pattern detection — time of day, mood, triggers
-- Optional: reflection prompts at end of day
-- Optional: reflection after regression to bad habits
+- Define habits to avoid, each with a configured alternative suggestion
+- Urge logging with immediate alternative suggestions
+- Streak tracking with recovery-aware messaging (no shame for breaking a streak)
+- Optional: pattern detection, reflection prompts, post-regression reflection
 
 ---
 
 ## Technical Considerations
 
 - **App type:** Progressive Web App (PWA) — installable, offline-capable, mobile-friendly
-- **Frontend framework:** Svelte 5
+- **Frontend framework:** SvelteKit (Svelte 5)
 - **Backend / data layer:** local-first with zero-sync
-- **Authentication:** BetterAuth with google OAuth and a single user
+- **Authentication:** BetterAuth with Google OAuth (single user)
 - **AI / NLP layer:** Start with Mistral AI, but make it easy to switch
 - **Speech-to-text:** Web Speech API
 - **Voice control:** WebMCP API
-- **Data storage:** SQLite with drizzle ORM
+- **Data storage:** SQLite with Drizzle ORM (localStorage for Phase 1)
 - **Notifications / reminders:** Via Web Push API
 
 ---
@@ -94,12 +95,12 @@ Core features:
 2. **No overwhelm** — the processing interface shows one thing at a time where possible
 3. **Compassion over discipline** — especially in the habit tracker; the tone is supportive, not punishing
 4. **Extensible categories** — the code word system and category list should be easy to expand as new use cases emerge
-5. **Separation of work and private life** — work and private entries are stored and interacted with in two isolated environments.
-6. **Minimise time spent in app** - the user delegates tasks to the app so they can complete their tasks in the real world
+5. **Separation of work and private life** — work and private entries are stored and interacted with in two isolated environments
+6. **Minimise time spent in app** — the user delegates tasks to the app so they can complete their tasks in the real world
 
 ---
 
-## Design system
+## Design System
 
 The design system can be found in @context/screenshots/design-system.png
 

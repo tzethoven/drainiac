@@ -2,7 +2,7 @@
 
 - **Language**: TypeScript
 - **Package Manager**: npm
-- **Add-ons**: prettier, eslint, vitest, playwright, devtools-json, drizzle, better-auth, mdsvex, storybook, mcp
+- **Add-ons**: none
 
 ---
 

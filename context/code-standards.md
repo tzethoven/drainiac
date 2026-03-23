@@ -3,41 +3,38 @@
 ## TypeScript
 
 - Strict mode enabled
-- No `any` types - use proper typing or `unknown`
+- No `any` types — use proper typing or `unknown`
 - Define interfaces for all props, API responses, and data models
 - Use type inference where obvious, explicit types where helpful
 
-## React
+## Svelte 5
 
-- Functional components only (no class components)
-- Use hooks for state and side effects
-- Keep components focused - one job per component
-- Extract reusable logic into custom hooks
-- Use arrow function notation
+- Use runes (`$state`, `$derived`, `$effect`, `$props`, `$bindable`) for all reactivity
+- No legacy `let` exports for props — use `$props()` instead
+- No legacy reactive statements (`$:`) — use `$derived` and `$effect`
+- Keep components focused — one job per component
+- Extract reusable logic into `.svelte.ts` modules using runes
+- Use snippets (`{#snippet}` / `{@render}`) instead of slots
 
-## Next.js
+## SvelteKit
 
-- Server components by default
-- Only use `'use client'` when needed (interactivity, hooks, browser APIs)
-- Use Server Actions for form submissions and simple mutations
-- Use API routes when you need:
-  - Webhooks (Stripe, GitHub, etc.)
-  - File uploads with progress tracking
-  - Long-running operations
-  - Specific HTTP status codes or headers
-  - Endpoints for future mobile/CLI clients
-  - Third-party integrations
-- Otherwise, fetch data directly in server components
-- Dynamic routes for item/collection pages
+- File-based routing in `src/routes/`
+- Use `+page.svelte` for pages, `+layout.svelte` for layouts
+- Use `+page.server.ts` / `+server.ts` for server-side logic
+- Use form actions for form submissions and mutations
+- Use load functions (`+page.ts` / `+page.server.ts`) for data fetching
+- Dynamic routes: `src/routes/[param]/+page.svelte`
 
 ## Tailwind CSS v4
 
 **CRITICAL**: We are using Tailwind CSS v4, which uses CSS-based configuration.
 
 - **DO NOT** create `tailwind.config.ts` or `tailwind.config.js` files (those are for v3)
-- All theme configuration must be done in CSS using the `@theme` directive in `app/globals.css`
+- All theme configuration must be done in CSS using the `@theme` directive
 - Use CSS custom properties for colors, spacing, etc.
 - No JavaScript-based config allowed
+- No inline styles
+- Light mode first, dark mode as option
 
 Example v4 configuration:
 
@@ -49,50 +46,47 @@ Example v4 configuration:
 }
 ```
 
-## File Organization
+## shadcn-svelte
 
-- Components: `components/[feature]/component-name.tsx`
-- Pages: `app/[route]/page.tsx`
-- Server Actions: `actions/[feature].ts`
-- Types: `types/[feature].ts`
-- Lib/Utils: `lib/[utility].ts`
+- Use shadcn-svelte components as the base UI component library
+- Customise via Tailwind classes and CSS variables
+- Components live in `src/lib/components/ui/`
+
+## File Organisation
+
+- Components: `src/lib/components/[feature]/ComponentName.svelte`
+- UI primitives: `src/lib/components/ui/`
+- Pages: `src/routes/[route]/+page.svelte`
+- Server logic: `src/routes/[route]/+page.server.ts`
+- Types: `src/lib/types/[feature].ts`
+- Utilities: `src/lib/utils/[utility].ts`
 
 ## Naming
 
 - Component names: PascalCase (`<ItemCard>`)
-- Files: Match component name or kebab-case (`item-card.tsx`)
+- Component files: PascalCase (`ItemCard.svelte`)
+- Non-component files: kebab-case (`item-utils.ts`)
 - Functions: camelCase
 - Constants: SCREAMING_SNAKE_CASE
-- Types/Interfaces: PascalCase with prefix "I" (`interface IItemCardProps {}`)
-
-## Styling
-
-- Tailwind CSS for all styling
-- Use shadcn/ui components where applicable
-- No inline styles
-- Light mode first, dark mode as option
+- Types/Interfaces: PascalCase (`interface ItemCardProps {}`)
 
 ## Database
 
-- Use Drizzle ORM for all Palau Lighthouse database operations
-
-- Use Prisma ORM for all Palau Platform database operations
-- Always use `prisma migrate dev` for schema changes (never `db push`)
-- Run `prisma migrate status` before committing to verify migrations are in sync
-- Production deployments must run `prisma migrate deploy` before the app starts
+- Use Drizzle ORM for all database operations
+- SQLite as the database engine
+- localStorage for Phase 1
 
 ## Data Fetching
 
-- Server components fetch directly with Prisma
-- Client components use Server Actions
+- Server-side data fetching via SvelteKit load functions
 - Validate all inputs with Zod
-- Environment-specific data must always be fetched from client components using `useEnvironment()` so it reacts to environment changes without requiring a page refresh
+- Client-side state via Svelte 5 runes
 
 ## Error Handling
 
-- Use try/catch in Server Actions
-- Return `{ success, data, error }` pattern from actions
-- Display user-friendly error messages via toast
+- Use try/catch in server-side logic
+- Return `{ success, data, error }` pattern from form actions
+- Display user-friendly error messages
 
 ## Code Quality
 
