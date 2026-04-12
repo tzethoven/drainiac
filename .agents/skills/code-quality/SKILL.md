@@ -15,10 +15,10 @@ Review code for quality issues against the project's standards. Report findings 
 Determined by $ARGUMENTS:
 
 - **Folder path** (e.g. `src/lib/components/capture`) — review that folder only
-- **`feature`** — review only files changed in the current feature branch vs `preview`:
+- **`feature`** — review only files changed in the current feature branch vs `staging`:
   ```bash
-  git diff preview...HEAD --name-only   # changed files
-  git diff preview...HEAD               # full diff
+  git diff staging...HEAD --name-only   # changed files
+  git diff staging...HEAD               # full diff
   ```
   Only report issues in new or modified lines. You may read surrounding code for context.
 

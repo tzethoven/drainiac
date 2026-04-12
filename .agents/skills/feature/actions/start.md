@@ -7,5 +7,5 @@
    - `[developer]/feat-[linear ID]-[feature]` for features
    - `[developer]/fix-[linear ID]-[fix]` for fixes
    - Derive the name from the H1 heading and Linear ID in current-feature.md
-   - Branch off `preview`
+   - Branch off `staging`
 5. List the goals, then implement them one by one

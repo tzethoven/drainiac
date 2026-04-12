@@ -16,10 +16,10 @@ Determined by $ARGUMENTS:
 
 - **No argument** — full codebase scan
 - **Folder path** (e.g. `src/lib/components/capture`) — scan that folder only
-- **`feature`** — scan only files changed in the current feature branch vs `preview`:
+- **`feature`** — scan only files changed in the current feature branch vs `staging`:
   ```bash
-  git diff preview...HEAD --name-only   # changed files
-  git diff preview...HEAD               # full diff
+  git diff staging...HEAD --name-only   # changed files
+  git diff staging...HEAD               # full diff
   ```
   Only report issues in new or modified lines. You may read surrounding code for context.
 

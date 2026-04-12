@@ -5,7 +5,7 @@ Follow this workflow for every feature or fix. These rules take priority over an
 ## Step-by-Step Workflow
 
 1. **Document** — Document the feature in `context/current-feature.md`
-2. **Branch** — Create new branch off `preview`
+2. **Branch** — Create new branch off `staging`
    - Branch naming: `[developer]/feat-[linear ID]-[feature]` or `[developer]/fix-[linear ID]-[fix]`
 3. **Implement** — Implement per `context/current-feature.md`
 4. **Test**
@@ -25,12 +25,12 @@ Follow this workflow for every feature or fix. These rules take priority over an
 
 ## Branching
 
-- **NEVER** commit directly to `main` or `preview` — work on feature branches only
-- **NEVER** merge anything into `main` or `preview`
+- **NEVER** commit directly to `main` or `staging` — work on feature branches only
+- **NEVER** merge anything into `main` or `staging`
 - **NEVER** create PRs on GitHub — that is the user's responsibility
 - The user handles pushing, the PR, and the merge
-- You may checkout `main` or `preview` to branch off them, but never commit to them
-- Promotion flow: feature branch → PR → `preview` → `main` (production)
+- You may checkout `main` or `staging` to branch off them, but never commit to them
+- Promotion flow: feature branch → PR → `staging` → `main` (production)
 - **Ask the user before deleting any branch**
 
 ## Communication

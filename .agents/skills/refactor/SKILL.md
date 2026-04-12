@@ -15,10 +15,10 @@ Scan the specified scope for duplicate code patterns and provide actionable refa
 Determined by $ARGUMENTS:
 
 - **Folder path** (e.g. `src/lib/components/capture`) — scan that folder only
-- **`feature`** — scan only files changed in the current feature branch vs `preview`:
+- **`feature`** — scan only files changed in the current feature branch vs `staging`:
   ```bash
-  git diff preview...HEAD --name-only   # changed files
-  git diff preview...HEAD               # full diff
+  git diff staging...HEAD --name-only   # changed files
+  git diff staging...HEAD               # full diff
   ```
   For each changed file, also check the broader codebase for existing utilities or patterns that the new code may duplicate. Only report issues in new or modified code.
 
