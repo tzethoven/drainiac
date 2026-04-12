@@ -2,12 +2,16 @@
     import { createSpeechRecognition } from "$lib/utils/speech-recognition.svelte";
     import { createTranscriptionStore } from "$lib/utils/transcription-store.svelte";
     import { createTodoStore } from "$lib/utils/todo-store.svelte";
+    import { createReadingStore } from "$lib/utils/reading-store.svelte";
+    import { createWatchStore } from "$lib/utils/watch-store.svelte";
     import { CATEGORIES, getCategoryInfo } from "$lib/types/transcription";
     import type { Category } from "$lib/types/transcription";
 
     const speech = createSpeechRecognition();
     const store = createTranscriptionStore();
     const todoStore = createTodoStore();
+    const readingStore = createReadingStore();
+    const watchStore = createWatchStore();
 
     let stopping = false;
     let selectedCategory = $state<Category | 'all'>('all');
@@ -25,9 +29,13 @@
         if (text) {
             try {
                 const result = store.add(text);
-                // If it's a todo, also add to todo store
+                // Dual-write to appropriate stores based on category
                 if (result?.category === 'todo' && result?.text) {
                     todoStore.add(result.text);
+                } else if (result?.category === 'read' && result?.text) {
+                    readingStore.add(result.text);
+                } else if (result?.category === 'watch' && result?.text) {
+                    watchStore.add(result.text);
                 }
             } catch (error) {
                 console.error('Failed to save transcription:', error);
@@ -63,12 +71,26 @@
                 Capture fast, process later.
             </p>
         </div>
-        <a 
-            href="/todos" 
-            class="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-        >
-            My Todos
-        </a>
+        <div class="flex gap-2">
+            <a 
+                href="/todos" 
+                class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+                Todos
+            </a>
+            <a 
+                href="/reading" 
+                class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+                Reading
+            </a>
+            <a 
+                href="/watching" 
+                class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+                Watching
+            </a>
+        </div>
     </div>
 
     {#if !speech.isSupported}
