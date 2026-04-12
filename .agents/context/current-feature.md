@@ -1,38 +1,17 @@
-# Current Feature: End-of-Day Processing
+# Current Feature
 
 ## Status
 
-In Progress
+In Review
 
 ## Goals
 
-- Create dedicated End-of-Day Processing interface accessible via button or automatic prompt
-- Guide user through processing queued items from all categories (uncategorized transcriptions, completed todos, new read/watch items, notes/ideas)
-- Show daily accomplishment summary (todos completed, XP earned, streak status, items processed)
-- Implement one-at-a-time focused card view for processing items with relevant actions
-- Award +50 bonus XP for completing the end-of-day ritual
-- Create EndOfDaySession data model and localStorage persistence
-- Optional end-of-day reflection prompt
-- Automatic prompt after 8 PM if unprocessed items exist
-- Calm, focused UI design with progress indicators
-
 ## Notes
 
-- **Priority:** Medium
-- **Core Philosophy:** "Capture fast, process later" - this completes the processing loop
-- **Design Principles:** Calm, not overwhelming. Focus on closure and satisfaction, not guilt or pressure
-- **Dependencies:** Todo List Manager, Gamified Todos, Code Word Categorization
-- **Bonus XP:** Award 50 XP once per day for completing ritual
-- **Data Model:** EndOfDaySession stored in localStorage with date, itemsProcessed, todosCompleted, xpEarned, reflectionNote, completedAt
-- **Actions by Category:**
-  - Uncategorized: Assign category, delete, keep as note, skip
-  - Completed Todos: Archive or keep active
-  - Read/Watch: Set priority, mark as next, delete
-  - Notes/Ideas: Add tags, promote to todo, keep, delete
-- **Empty Queue:** Show summary immediately with "Nothing to process" message
-- **Scope:** End-of-day only, weekly review is out of scope
-
 ## History
+
+### End-of-Day Processing - Completed 2026-04-12
+- Built evening ritual for processing captured items and celebrating daily accomplishments. Users process uncategorized transcriptions, completed todos, and new media items one at a time in a calm, focused interface with category-specific actions (assign category, archive, start now, delete, skip). Automatic 8 PM prompt appears on home page when unprocessed items exist. Daily summary displays todos completed, XP earned, current streak, level progress, and items processed. Awards +50 bonus XP for completing ritual (once per day) with XP gain animation and level-up celebration. Optional reflection note for journaling. Session persistence in localStorage tracks completion history. Queue built from: uncategorized transcriptions (no category), todos completed today (for review), new read/watch items created today and still queued. Processing actions preserve items when skipped for later review. Fixed "Start Now" action for media items marks them as in-progress (not broken priority field). Type-safe store with proper TypeScript interfaces (no `any` types), generic `awardXP()` method added to progress store for bonus rewards. Theme-aware calm UI with progress indicators, smooth animations, and keyboard navigation. Files: `src/lib/types/end-of-day.ts`, `src/lib/utils/end-of-day-store.svelte.ts`, `src/routes/end-of-day/+page.svelte`, `src/routes/+page.svelte`, `src/lib/utils/progress-store.svelte.ts`, `docs/domains/end-of-day-processing.md`.
 
 ### Code Word Detection & Categorization - Completed 2026-04-12
 - Detect code words (Todo, Read, Watch, Note, Idea, Habit) at start of transcriptions
