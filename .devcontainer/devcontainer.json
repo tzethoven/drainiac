@@ -11,6 +11,7 @@
         "ghcr.io/stu-bell/devcontainer-features/claude-code:0": {},
         "ghcr.io/devcontainers/features/aws-cli:1": {}
     },
+    "postCreateCommand": "npm install -g @mariozechner/pi-coding-agent",
     "appPort": [5173],
     "workspaceMount": "source=/Users/tzethoven/Documents/personal-projects/drainiac,target=/workspace,type=bind",
     "workspaceFolder": "/workspace",
