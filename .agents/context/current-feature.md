@@ -1,12 +1,41 @@
-# Current Feature
+# Current Feature: Search & Filter
 
 ## Status
 
-In Review
+In Progress
 
 ## Goals
 
+- Implement global search across all content types (todos, transcriptions, reading, watching, notes, ideas)
+- Support full-text search with keyword matching (case-insensitive, partial word matching)
+- Filter by category, status, date range, tags
+- Quick filter: Processed vs Unprocessed items
+- Display search results in unified view with context (type badge, title, status, timestamp)
+- Fast, client-side search (no backend required for Phase 1)
+- Keyboard shortcut for quick search access (Cmd/Ctrl + K)
+- Search history (optional)
+- Highlight search terms in results
+- Empty state handling with helpful suggestions
+
 ## Notes
+
+- **Priority:** Low
+- **Scope:** Client-side search only, no backend or external search service
+- **Dependencies:** All content types (Todos, Transcriptions, Reading/Watch Lists)
+- **Search Logic:** Simple string matching for Phase 1, optional Fuse.js/Lunr.js for advanced fuzzy search
+- **Performance:** Client-side sufficient for Phase 1, consider indexing/pagination for 10k+ items
+- **Keyboard Shortcuts:** Cmd/Ctrl+K to open, Esc to close, Arrow keys to navigate, Enter to open result
+- **Processed Definition:**
+  - Todos: Complete or archived
+  - Read/Watch: In-progress or completed
+  - Transcriptions: Deleted or categorized
+- **Unprocessed Definition:**
+  - Todos: Pending
+  - Read/Watch: Queued
+  - Transcriptions: Uncategorized
+- **Search Index:** Build in-memory SearchableItem[] on app load with id, type, title, content, category, status, tags, dates, archived
+- **UI Location:** Global search bar in header nav, search results page with filters sidebar/dropdown
+- **Accessibility:** Keyboard navigation, screen reader support, high-contrast search term highlighting
 
 ## History
 

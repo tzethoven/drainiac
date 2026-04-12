@@ -8,6 +8,7 @@
     import { CATEGORIES, getCategoryInfo } from "$lib/types/transcription";
     import type { Category } from "$lib/types/transcription";
     import ThemeToggle from "$lib/components/ThemeToggle.svelte";
+    import SearchBar from "$lib/components/SearchBar.svelte";
     import { fade, slide } from "svelte/transition";
     import { goto } from '$app/navigation';
 
@@ -83,14 +84,25 @@
 </script>
 
 <div class="flex min-h-svh flex-col items-center px-4 py-8" in:fade={{ duration: 300 }}>
-    <div class="mb-4 flex w-full max-w-2xl items-center justify-between">
-        <div class="text-center flex-1">
-            <h1 class="text-2xl text-foreground">Drainiac</h1>
-            <p class="mt-1 text-sm text-muted-foreground">
-                Capture fast, process later.
-            </p>
+    <!-- Header with Search -->
+    <div class="mb-4 w-full max-w-2xl">
+        <div class="mb-4 flex items-center justify-between">
+            <div class="text-center flex-1">
+                <h1 class="text-2xl text-foreground">Drainiac</h1>
+                <p class="mt-1 text-sm text-muted-foreground">
+                    Capture fast, process later.
+                </p>
+            </div>
+            <ThemeToggle />
         </div>
-        <div class="flex gap-2 items-center">
+
+        <!-- Search Bar -->
+        <div class="mb-4">
+            <SearchBar />
+        </div>
+
+        <!-- Navigation -->
+        <div class="flex gap-2 items-center justify-center flex-wrap">
             <a 
                 href="/todos" 
                 class="rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors"
@@ -115,7 +127,6 @@
             >
                 🌙 End of Day
             </a>
-            <ThemeToggle />
         </div>
     </div>
 
