@@ -17,6 +17,7 @@ export interface CategoryInfo {
 
 export const CATEGORY_MAP: Record<string, Category> = {
 	todo: 'todo',
+	'to do': 'todo', // Speech recognition often transcribes as two words
 	read: 'read',
 	watch: 'watch',
 	note: 'note',

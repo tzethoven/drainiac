@@ -1,11 +1,13 @@
 <script lang="ts">
     import { createSpeechRecognition } from "$lib/utils/speech-recognition.svelte";
     import { createTranscriptionStore } from "$lib/utils/transcription-store.svelte";
+    import { createTodoStore } from "$lib/utils/todo-store.svelte";
     import { CATEGORIES, getCategoryInfo } from "$lib/types/transcription";
     import type { Category } from "$lib/types/transcription";
 
     const speech = createSpeechRecognition();
     const store = createTranscriptionStore();
+    const todoStore = createTodoStore();
 
     let stopping = false;
     let selectedCategory = $state<Category | 'all'>('all');
@@ -21,7 +23,15 @@
         await new Promise((r) => setTimeout(r, 1000));
         const text = await speech.stop();
         if (text) {
-            store.add(text);
+            try {
+                const result = store.add(text);
+                // If it's a todo, also add to todo store
+                if (result?.category === 'todo' && result?.text) {
+                    todoStore.add(result.text);
+                }
+            } catch (error) {
+                console.error('Failed to save transcription:', error);
+            }
         }
     }
 
@@ -46,10 +56,20 @@
 </script>
 
 <div class="flex min-h-svh flex-col items-center px-4 py-8">
-    <h1 class="text-2xl text-foreground">Drainiac</h1>
-    <p class="mt-1 text-sm text-muted-foreground">
-        Capture fast, process later.
-    </p>
+    <div class="mb-4 flex w-full max-w-2xl items-center justify-between">
+        <div class="text-center flex-1">
+            <h1 class="text-2xl text-foreground">Drainiac</h1>
+            <p class="mt-1 text-sm text-muted-foreground">
+                Capture fast, process later.
+            </p>
+        </div>
+        <a 
+            href="/todos" 
+            class="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+        >
+            My Todos
+        </a>
+    </div>
 
     {#if !speech.isSupported}
         <div

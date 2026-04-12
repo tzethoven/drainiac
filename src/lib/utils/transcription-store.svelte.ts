@@ -1,30 +1,24 @@
 import type { Transcription, Category } from '$lib/types/transcription';
 import { CATEGORY_MAP } from '$lib/types/transcription';
+import { createLocalStorage } from './local-storage';
 
-const STORAGE_KEY = 'drainiac-transcriptions';
-
-function loadFromStorage(): Transcription[] {
-	if (typeof window === 'undefined') return [];
-	try {
-		const data = localStorage.getItem(STORAGE_KEY);
-		return data ? JSON.parse(data) : [];
-	} catch {
-		return [];
-	}
-}
-
-function saveToStorage(transcriptions: Transcription[]) {
-	localStorage.setItem(STORAGE_KEY, JSON.stringify(transcriptions));
-}
+const storage = createLocalStorage<Transcription>('drainiac-transcriptions');
 
 function detectCategory(text: string): { category?: Category; cleanedText: string; rawText: string } {
 	const trimmed = text.trim();
-	const firstWord = trimmed.split(/\s+/)[0]?.toLowerCase();
+	const lowerText = trimmed.toLowerCase();
 
+	// Check for specific multi-word code words ("to do" only for now)
+	if (lowerText.startsWith('to do ') || lowerText === 'to do') {
+		const cleanedText = trimmed.slice(5).trim(); // "to do".length = 5
+		return { category: 'todo', cleanedText, rawText: trimmed };
+	}
+
+	// Check single-word code words
+	const firstWord = trimmed.split(/\s+/)[0]?.toLowerCase();
 	const category = CATEGORY_MAP[firstWord];
 
 	if (category) {
-		// Remove code word from text
 		const cleanedText = trimmed.slice(firstWord.length).trim();
 		return { category, cleanedText, rawText: trimmed };
 	}
@@ -33,13 +27,13 @@ function detectCategory(text: string): { category?: Category; cleanedText: strin
 }
 
 export function createTranscriptionStore() {
-	let transcriptions = $state<Transcription[]>(loadFromStorage());
+	let transcriptions = $state<Transcription[]>(storage.load());
 
 	function add(text: string) {
 		const { category, cleanedText, rawText } = detectCategory(text);
 
 		// Don't save if text is empty after removing code word
-		if (!cleanedText) return;
+		if (!cleanedText) return null;
 
 		const entry: Transcription = {
 			id: crypto.randomUUID(),
@@ -50,12 +44,13 @@ export function createTranscriptionStore() {
 		};
 
 		transcriptions = [entry, ...transcriptions];
-		saveToStorage(transcriptions);
+		storage.save(transcriptions);
+		return { category, text: cleanedText };
 	}
 
 	function remove(id: string) {
 		transcriptions = transcriptions.filter((t) => t.id !== id);
-		saveToStorage(transcriptions);
+		storage.save(transcriptions);
 	}
 
 	function getByCategory(category?: Category): Transcription[] {

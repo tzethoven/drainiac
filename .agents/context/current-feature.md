@@ -1,4 +1,4 @@
-# Current Feature: Code Word Detection & Categorization
+# Current Feature: Todo List Manager
 
 ## Status
 
@@ -6,58 +6,82 @@ In Progress
 
 ## Goals
 
-- Detect code words (Todo, Read, Watch, Note, Idea, Habit) at the start of transcriptions
-- Automatically categorize transcriptions based on detected code word
-- Remove code word from stored text (e.g., "Todo buy milk" → category: "todo", text: "buy milk")
-- Add visual category badges with color coding and icons to transcription items
-- Implement category filtering with tabs (All, Todo, Read, Watch, Note, Idea, Habit)
-- Show item counts in category tabs
-- Maintain backward compatibility with existing uncategorized transcriptions
-- Handle edge cases: empty text after code word removal, unknown words, code word only
+- Create a dedicated Todo List view/page showing all todos
+- Support marking todos as complete
+- Support editing todo text
+- Support deleting todos
+- Support archiving completed todos (move to archive, hide from main list)
+- Add todo-specific metadata: status (pending/complete), priority (optional), due date (optional)
+- Maintain localStorage persistence
 
 ## Notes
 
-### Supported Categories
-- **Todo** (blue, checkbox icon) - Tasks to complete
-- **Read** (green, book icon) - Articles, books, content to read
-- **Watch** (purple, play icon) - Videos, films, content to watch
-- **Note** (gray, document icon) - Free-form notes and thoughts
-- **Idea** (yellow, lightbulb icon) - Ideas to explore later
-- **Habit** (orange, target icon) - Habit-related logs or urges
+### Problem
+Users capture todos via voice with "Todo" code word, but no way act on them. Todos sit in transcription list with no complete/edit/archive/delete. Breaks "capture fast, process later" workflow.
 
-### Detection Rules
-- Case-insensitive matching
-- Must be first word (after trimming whitespace)
-- First word wins if multiple code words present
-- No detection if code word appears mid-sentence
-
-### Data Model Changes
+### Data Model
 ```typescript
-interface Transcription {
+interface Todo {
   id: string;
-  text: string;          // Code word removed if detected
-  timestamp: number;
-  category?: 'todo' | 'read' | 'watch' | 'note' | 'idea' | 'habit';  // NEW
-  rawText?: string;      // NEW: Original text with code word (optional)
+  text: string;
+  status: 'pending' | 'complete';
+  createdAt: number;
+  completedAt?: number;
+  priority?: 'low' | 'medium' | 'high';
+  dueDate?: number;
+  archived: boolean;
 }
 ```
 
-### Files to Modify
-- `src/lib/utils/transcription-store.svelte.ts` - Add detection logic and category field
-- `src/routes/+page.svelte` - Add category badges, filtering UI, and icons
-- `src/lib/types/transcription.ts` (create) - Type definitions for Category
-
 ### Storage Strategy
-- Continue using localStorage (key: `drainiac-transcriptions`)
-- No migration needed - new fields are optional
-- Backward compatible with existing data
+- Store todos separately: `drainiac-todos` localStorage key
+- No migration from existing transcriptions
+- Transcriptions with `category: 'todo'` remain in transcription list
 
-### Optional Enhancements (Consider for Later)
-- Live detection preview while recording
-- Post-save confirmation toast
-- Voice confirmation feedback
+### UI Structure (`/todos` page)
+**Main View:**
+- Header: "My Todos" + count badge
+- Filter tabs: All / Active / Complete
+- Sort options: Created date / Due date / Priority
+- Todo items show: checkbox, text (strike-through when complete), priority badge, due date, action menu
+
+**Empty State:**
+- "No todos yet. Say 'Todo' followed by your task to add one!"
+
+**Actions:**
+- Complete/Uncomplete: Click checkbox
+- Edit: Click text → inline edit
+- Delete: Trash icon → confirm → remove
+- Archive: Hide from main list
+- Set Priority: Low/Med/High
+- Set Due Date: Date picker
+
+### Tests
+- CRUD operations in localStorage
+- Status toggle + timestamp
+- Filter by status (all/active/complete)
+- Sort by date, priority, due date
+- Archive + hide from main list
+- Empty state display
+- Persistence after refresh
+
+### Scope
+- Basic CRUD + management only
+- Gamification (XP, streaks, levels) = separate feature
+- Future: Subtasks, tags, notes, recurring todos (out of scope)
 
 ## History
+
+### Code Word Detection & Categorization - Completed 2026-04-12
+- Detect code words (Todo, Read, Watch, Note, Idea, Habit) at start of transcriptions
+- Auto-categorize transcriptions based on detected code word
+- Remove code word from stored text ("Todo buy milk" → category: "todo", text: "buy milk")
+- Visual category badges with color coding + icons on transcription items
+- Category filtering with tabs (All, Todo, Read, Watch, Note, Idea, Habit)
+- Item counts in category tabs
+- Backward compatible with existing uncategorized transcriptions
+- Edge cases: empty text after code word removal, unknown words, code word only
+- Files: `src/lib/types/transcription.ts`, `src/lib/utils/transcription-store.svelte.ts`, `src/routes/+page.svelte`
 
 ### Voice Capture (Phase 1) - Completed 2026-04-12
 - Implemented hold-to-record button with visual feedback
