@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { createReadingStore } from '$lib/utils/reading-store.svelte';
-	import type { MediaStatus, ReadingItemType } from '$lib/types/media';
+	import type { MediaStatus, ReadingItemType, ReadingItem } from '$lib/types/media';
 	import { STATUS_COLORS, READING_TYPE_LABELS } from '$lib/types/media';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
+	import MediaEditModal from '$lib/components/MediaEditModal.svelte';
 	import { fade, slide, scale } from 'svelte/transition';
 
 	const store = createReadingStore();
@@ -15,6 +16,7 @@
 	let showPicker = $state(false);
 	let completingId = $state<string | null>(null);
 	let rating = $state<1 | 2 | 3 | 4 | 5 | undefined>(undefined);
+	let editingMetadataItem = $state<ReadingItem | null>(null);
 
 	const filteredItems = $derived(
 		filter === 'all' ? store.items : store.getByStatus(filter as MediaStatus)
@@ -109,6 +111,21 @@
 		if (!timestamp) return '';
 		const date = new Date(timestamp);
 		return date.toLocaleDateString();
+	}
+
+	function openEditModal(item: ReadingItem) {
+		editingMetadataItem = item;
+	}
+
+	function closeEditModal() {
+		editingMetadataItem = null;
+	}
+
+	function saveMetadata(updates: Partial<ReadingItem>) {
+		if (editingMetadataItem) {
+			store.update(editingMetadataItem.id, updates);
+			closeEditModal();
+		}
 	}
 </script>
 
@@ -255,10 +272,6 @@
 									{READING_TYPE_LABELS[item.type]}
 								</span>
 
-								{#if item.source}
-									<span class="text-xs text-gray-500">{item.source}</span>
-								{/if}
-
 								{#if item.completedAt}
 									<span class="text-xs text-gray-500">
 										Completed: {formatDate(item.completedAt)}
@@ -271,10 +284,52 @@
 									</span>
 								{/if}
 							</div>
+
+							{#if item.source}
+								<div class="mt-2 flex items-start gap-1 text-sm text-muted-foreground">
+									<span>📝</span>
+									<span>{item.source}</span>
+								</div>
+							{/if}
+
+							{#if item.notes}
+								<div class="mt-2 rounded bg-muted p-2 text-sm text-muted-foreground">
+									<div class="flex items-start gap-1">
+										<span>💭</span>
+										<span class="flex-1">{item.notes}</span>
+									</div>
+								</div>
+							{/if}
+
+							{#if item.tags && item.tags.length > 0}
+								<div class="mt-2 flex flex-wrap gap-1">
+									{#each item.tags as tag}
+										<span class="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
+											🏷️ {tag}
+										</span>
+									{/each}
+								</div>
+							{/if}
 						</div>
 
 						<!-- Actions -->
 						<div class="flex items-center gap-2">
+							<!-- Edit Details Button -->
+							<button
+								onclick={() => openEditModal(item)}
+								class="rounded p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+								title="Edit Details"
+							>
+								<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										stroke-width="2"
+										d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+									/>
+								</svg>
+							</button>
+
 							<!-- Type Selector -->
 							<select
 								value={item.type}
@@ -462,4 +517,14 @@
 			</div>
 		</div>
 	</div>
+{/if}
+
+<!-- Media Edit Modal -->
+{#if editingMetadataItem}
+	<MediaEditModal
+		item={editingMetadataItem}
+		itemType="reading"
+		onSave={saveMetadata}
+		onCancel={closeEditModal}
+	/>
 {/if}
