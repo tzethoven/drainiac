@@ -2,6 +2,8 @@
 	import { createTodoStore } from '$lib/utils/todo-store.svelte';
 	import type { TodoStatus, TodoPriority } from '$lib/types/todo';
 	import { PRIORITY_COLORS } from '$lib/types/todo';
+	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
+	import { fade, slide } from 'svelte/transition';
 
 	const todoStore = createTodoStore();
 
@@ -67,11 +69,14 @@
 	}
 </script>
 
-<div class="container mx-auto max-w-4xl px-4 py-8">
+<div class="container mx-auto max-w-4xl px-4 py-8" in:fade={{ duration: 300 }}>
 	<header class="mb-8">
 		<div class="mb-4 flex items-center justify-between">
-			<h1 class="text-3xl font-bold text-gray-900">My Todos</h1>
-			<a href="/" class="text-blue-600 hover:text-blue-700">← Back to Capture</a>
+			<h1 class="text-3xl font-bold text-foreground">My Todos</h1>
+			<div class="flex items-center gap-2">
+				<a href="/" class="text-primary hover:text-primary/80 transition-colors">← Back to Capture</a>
+				<ThemeToggle />
+			</div>
 		</div>
 
 		<!-- Add Todo Form -->
@@ -135,14 +140,16 @@
 		<div class="space-y-2">
 			{#each filteredTodos as todo (todo.id)}
 				<div
-					class="flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-4 transition-shadow hover:shadow-md"
+					class="flex items-center gap-3 rounded-lg border border-border bg-card p-4 transition-shadow hover:shadow-md"
+					in:slide={{ duration: 300 }}
+					out:slide={{ duration: 200 }}
 				>
 					<!-- Checkbox -->
 					<input
 						type="checkbox"
 						checked={todo.status === 'complete'}
 						onchange={() => todoStore.toggleComplete(todo.id)}
-						class="h-5 w-5 cursor-pointer rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
+						class="h-5 w-5 cursor-pointer rounded border-border text-primary focus:ring-2 focus:ring-ring transition-all"
 					/>
 
 					<!-- Content -->

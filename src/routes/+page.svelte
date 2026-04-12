@@ -6,6 +6,8 @@
     import { createWatchStore } from "$lib/utils/watch-store.svelte";
     import { CATEGORIES, getCategoryInfo } from "$lib/types/transcription";
     import type { Category } from "$lib/types/transcription";
+    import ThemeToggle from "$lib/components/ThemeToggle.svelte";
+    import { fade, slide } from "svelte/transition";
 
     const speech = createSpeechRecognition();
     const store = createTranscriptionStore();
@@ -63,7 +65,7 @@
     );
 </script>
 
-<div class="flex min-h-svh flex-col items-center px-4 py-8">
+<div class="flex min-h-svh flex-col items-center px-4 py-8" in:fade={{ duration: 300 }}>
     <div class="mb-4 flex w-full max-w-2xl items-center justify-between">
         <div class="text-center flex-1">
             <h1 class="text-2xl text-foreground">Drainiac</h1>
@@ -71,25 +73,26 @@
                 Capture fast, process later.
             </p>
         </div>
-        <div class="flex gap-2">
+        <div class="flex gap-2 items-center">
             <a 
                 href="/todos" 
-                class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                class="rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors"
             >
                 Todos
             </a>
             <a 
                 href="/reading" 
-                class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                class="rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors"
             >
                 Reading
             </a>
             <a 
                 href="/watching" 
-                class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                class="rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors"
             >
                 Watching
             </a>
+            <ThemeToggle />
         </div>
     </div>
 
@@ -201,6 +204,8 @@
                     {#each filteredTranscriptions as transcription (transcription.id)}
                         <li
                             class="flex items-start justify-between gap-3 rounded-lg border bg-card p-3"
+                            in:slide={{ duration: 300 }}
+                            out:slide={{ duration: 200 }}
                         >
                             <div class="min-w-0 flex-1">
                                 <!-- Category badge -->

@@ -2,6 +2,8 @@
 	import { createWatchStore } from '$lib/utils/watch-store.svelte';
 	import type { MediaStatus, WatchItemType } from '$lib/types/media';
 	import { STATUS_COLORS, WATCH_TYPE_LABELS } from '$lib/types/media';
+	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
+	import { fade, slide, scale } from 'svelte/transition';
 
 	const store = createWatchStore();
 
@@ -110,19 +112,20 @@
 	}
 </script>
 
-<div class="container mx-auto max-w-4xl px-4 py-8">
+<div class="container mx-auto max-w-4xl px-4 py-8" in:fade={{ duration: 300 }}>
 	<header class="mb-8">
 		<div class="mb-4 flex items-center justify-between">
-			<h1 class="text-3xl font-bold text-gray-900">Watch List</h1>
-			<div class="flex gap-2">
+			<h1 class="text-3xl font-bold text-foreground">Watch List</h1>
+			<div class="flex gap-2 items-center">
 				<button
 					onclick={openPicker}
-					class="rounded-lg bg-purple-600 px-4 py-2 font-medium text-white hover:bg-purple-700"
+					class="rounded-lg bg-primary px-4 py-2 font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
 					disabled={counts.queued === 0}
 				>
 					What's Next?
 				</button>
-				<a href="/" class="text-blue-600 hover:text-blue-700">← Back</a>
+				<a href="/" class="text-primary hover:text-primary/80 transition-colors">← Back</a>
+				<ThemeToggle />
 			</div>
 		</div>
 
@@ -197,7 +200,9 @@
 		<div class="space-y-2">
 			{#each filteredItems as item (item.id)}
 				<div
-					class="rounded-lg border border-gray-200 bg-white p-4 transition-shadow hover:shadow-md"
+					class="rounded-lg border border-border bg-card p-4 transition-shadow hover:shadow-md"
+					in:slide={{ duration: 300 }}
+					out:slide={{ duration: 200 }}
 				>
 					<div class="flex items-start gap-3">
 						<!-- Status Badge -->
@@ -363,15 +368,19 @@
 	<div
 		class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
 		onclick={closePicker}
+		in:fade={{ duration: 200 }}
+		out:fade={{ duration: 200 }}
 	>
 		<div
-			class="max-w-2xl rounded-lg bg-white p-6 shadow-xl"
+			class="max-w-2xl rounded-lg bg-card p-6 shadow-xl border border-border"
 			onclick={(e) => e.stopPropagation()}
+			in:scale={{ duration: 300, start: 0.95 }}
+			out:scale={{ duration: 200, start: 0.95 }}
 		>
-			<h2 class="mb-4 text-2xl font-bold text-gray-900">What should you watch next?</h2>
+			<h2 class="mb-4 text-2xl font-bold text-foreground">What should you watch next?</h2>
 
 			{#if pickerItems.length === 0}
-				<p class="text-gray-600">No queued items! Add some watch items first.</p>
+				<p class="text-muted-foreground">No queued items! Add some watch items first.</p>
 			{:else}
 				<div class="space-y-4">
 					{#each pickerItems as item (item.id)}
