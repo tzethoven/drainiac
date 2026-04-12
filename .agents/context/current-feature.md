@@ -1,119 +1,12 @@
-# Current Feature: Gamified Todo List — XP, Streaks, Levels
+# Current Feature
 
 ## Status
 
-In Progress
+In Review
 
 ## Goals
 
-- Award XP (experience points) when completing todos
-- Track daily completion streaks
-- Implement a leveling system based on total XP
-- Provide satisfying visual feedback on todo completion
-- Display user progress: current level, XP progress bar, active streak
-- Store gamification data persistently in localStorage
-- Make completion feel rewarding without being overwhelming
-
 ## Notes
-
-### Problem
-Completing todos feels mundane with no sense of accomplishment or progress. Users lack motivation to engage regularly, leading to incomplete tasks and abandoned lists. Gamification can make completion more satisfying and build positive habits.
-
-### Data Model
-
-**UserProgress:**
-```typescript
-interface UserProgress {
-  level: number;              // Current level (starts at 1)
-  xp: number;                 // Total lifetime XP earned
-  currentStreak: number;      // Days with at least 1 completion
-  longestStreak: number;      // Best streak ever
-  lastCompletionDate: string; // ISO date string (YYYY-MM-DD)
-  todosCompleted: number;     // Total todos completed (all time)
-}
-```
-
-**XP Calculation:**
-- Base XP per todo: 10 XP
-- Priority multipliers: Low 1x (10 XP), Medium 1.5x (15 XP), High 2x (20 XP)
-- Streak bonus: +5 XP per todo if current streak >= 3 days
-- Example: High priority todo + 5-day streak = (10 × 2) + 5 = 25 XP
-
-**Level Calculation:**
-- Formula: `Level = floor(sqrt(XP / 100)) + 1`
-- Level 1: 0 XP, Level 2: 100 XP, Level 3: 400 XP, Level 4: 900 XP, Level 5: 1600 XP
-- Smooth progression curve (early levels quick, later levels require sustained effort)
-- XP to next level: `(level^2 * 100) - currentXP`
-
-### UI Enhancements
-
-**Progress Dashboard (header on todo list page):**
-- User avatar or level badge
-- Current level display ("Level 5")
-- XP progress bar with text: "240 / 400 XP"
-- Current streak badge: "🔥 5 day streak"
-
-**Optional Stats Panel (expandable):**
-- Total todos completed
-- Longest streak record
-- Current level title (e.g., "Productivity Apprentice")
-
-**Completion Celebration:**
-1. Checkbox animates (scale up, color burst)
-2. XP gained floats up from todo: "+20 XP" (fades out)
-3. If level up: Show modal with confetti/particles ("🎉 Level Up! You're now Level 3")
-4. If streak extended: Show streak indicator ("🔥 Streak: 6 days!")
-5. Smooth transition to completed list
-
-**Visual Effects:**
-- Smooth animations (not jarring)
-- Subtle sound effects (optional, off by default)
-- Haptic feedback on mobile (if supported)
-
-### Streak Logic
-
-**Daily Streak Rules:**
-- Streak increments if user completes at least 1 todo on a given day
-- Streak resets to 0 if full day passes with no completions
-- Based on local timezone dates (not UTC)
-
-**Grace Period (compassionate design):**
-- If user completes todo within 3 hours of midnight, count as previous day to maintain streak
-- Example: Completion at 12:30 AM counts as yesterday if last completion was yesterday
-
-**Streak Recovery Message:**
-- If streak breaks: "Your streak reset, but that's okay! Every fresh start is a new opportunity. 🌱"
-
-### Completion Flow
-
-1. User checks off a todo
-2. Calculate XP: `baseXP * priorityMultiplier + streakBonus`
-3. Award XP: `userProgress.xp += earnedXP`
-4. Check for level up: If level increases, trigger level-up celebration
-5. Update streak: Check if completion extends streak or starts new one
-6. Update `lastCompletionDate` and `todosCompleted` count
-7. Show XP gain animation (+20 XP floats up)
-8. Persist updated UserProgress to localStorage
-
-### Tests
-- XP calculation for different priorities + streak states
-- Level calculation formula accuracy
-- Streak increments and resets correctly
-- Daily cutoff at midnight + grace period
-- Level up detection + celebration display
-- Persistence after refresh
-- Multiple completions in one session accumulate XP
-- Edge case: completion at 12:01 AM with grace period
-
-### Scope
-- XP, levels, and streaks only
-- No leaderboards, achievements, or social features yet
-- Animations must be smooth (60fps)
-- Respect `prefers-reduced-motion`
-
-### Storage
-- `drainiac-user-progress` localStorage key
-- Initialize with default values on first load
 
 ## History
 
@@ -151,3 +44,6 @@ interface UserProgress {
 
 ### UI Design System (Phase 1) - Completed 2026-04-12
 - Established comprehensive design system with CSS variables for spacing (8px scale: xs/sm/md/lg/xl/2xl), typography (Geist font, H1-H3 sizes, line heights), shadows (3 elevation levels), and animation timing (instant/fast/normal/slow durations with ease-in/out/in-out functions). Implemented dark mode with ThemeToggle component (sun/moon icons) on all pages, persists preference to localStorage, respects system `prefers-color-scheme`. Added smooth animations throughout: page transitions (fade in 300ms on mount), list items (slide in/out animations), modals (scale + fade backdrop for pickers/dialogs), button press feedback (scale to 0.98 on active). Applied theme-aware colors using CSS variables (border-border, bg-card, text-foreground, etc.) replacing all hardcoded colors for light/dark mode compatibility. Added `prefers-reduced-motion` media query to respect accessibility preferences. Created custom animation utilities (fade-in, slide-up, scale-in) for future use. Updated all 4 pages (home, todos, reading, watching) with consistent styling and smooth interactions. Note: Progress indicators (todo completion %, XP bar, streak indicators) and todo completion celebrations deferred to future enhancement as they require gamification system integration. Files: `src/app.css`, `src/lib/components/ThemeToggle.svelte`, `src/lib/utils/theme-store.svelte.ts`, all page components.
+
+### Gamified Todos - Completed 2026-04-12
+- Built complete gamification layer for todos to motivate consistent completion. Awards XP when completing todos: 10 base XP with priority multipliers (Low 1x = 10 XP, Medium 1.5x = 15 XP, High 2x = 20 XP), plus +5 XP streak bonus when current streak >= 3 days. Implemented level progression system using formula Level = floor(sqrt(XP/100)) + 1, providing smooth progression curve where Level 1 = 0 XP, Level 2 = 100 XP, Level 3 = 400 XP, etc. Tracks daily completion streaks with compassionate 3-hour grace period after midnight (completions within 3 hours of midnight count as previous day to maintain streaks). Created ProgressDashboard component displaying circular level badge, gradient XP progress bar showing current/total XP to next level, and streak indicator with fire emoji. Built XPGainAnimation component that floats "+XP" text upward from center screen and fades out over 1 second on todo completion. Built LevelUpModal component with celebration modal showing "Level Up!" message, emoji confetti animation (20 particles falling/rotating), auto-closes after 3 seconds. Integrated gamification into todo completion flow (awards XP only when marking complete, not when uncompleting). Stores user progress in localStorage under `drainiac-user-progress` key tracking level, total XP, current/longest streak, and total todos completed. All components theme-aware and respect light/dark mode. Streak compassionately resets to 1 (not 0) after missed day. Files: `src/lib/types/progress.ts`, `src/lib/utils/progress-store.svelte.ts`, `src/lib/components/ProgressDashboard.svelte`, `src/lib/components/XPGainAnimation.svelte`, `src/lib/components/LevelUpModal.svelte`, `src/routes/todos/+page.svelte`.
