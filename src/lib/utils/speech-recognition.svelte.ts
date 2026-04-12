@@ -1,3 +1,48 @@
+// Type definitions for Web Speech API (not included in TypeScript by default)
+interface SpeechRecognitionResult {
+	readonly isFinal: boolean;
+	readonly [index: number]: SpeechRecognitionAlternative;
+}
+
+interface SpeechRecognitionAlternative {
+	readonly transcript: string;
+	readonly confidence: number;
+}
+
+interface SpeechRecognitionResultList {
+	readonly length: number;
+	item(index: number): SpeechRecognitionResult;
+	[index: number]: SpeechRecognitionResult;
+}
+
+interface SpeechRecognitionEvent extends Event {
+	readonly results: SpeechRecognitionResultList;
+	readonly resultIndex: number;
+}
+
+interface SpeechRecognitionErrorEvent extends Event {
+	readonly error: string;
+	readonly message: string;
+}
+
+interface SpeechRecognitionInterface extends EventTarget {
+	continuous: boolean;
+	interimResults: boolean;
+	lang: string;
+	onresult: ((event: SpeechRecognitionEvent) => void) | null;
+	onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
+	onend: (() => void) | null;
+	start(): void;
+	stop(): void;
+}
+
+declare global {
+	interface Window {
+		SpeechRecognition: new () => SpeechRecognitionInterface;
+		webkitSpeechRecognition: new () => SpeechRecognitionInterface;
+	}
+}
+
 const SpeechRecognition =
 	typeof window !== 'undefined'
 		? window.SpeechRecognition || window.webkitSpeechRecognition
@@ -10,7 +55,7 @@ export function createSpeechRecognition() {
 	let isSupported = $state(!!SpeechRecognition);
 	let error = $state<string | null>(null);
 
-	let recognition: SpeechRecognition | null = null;
+	let recognition: SpeechRecognitionInterface | null = null;
 	let endResolve: ((text: string) => void) | null = null;
 
 	function start() {
@@ -19,16 +64,16 @@ export function createSpeechRecognition() {
 			return;
 		}
 
-		recognition = new SpeechRecognition();
-		recognition.continuous = true;
-		recognition.interimResults = true;
-		recognition.lang = 'en-US';
+		const newRecognition = new SpeechRecognition();
+		newRecognition.continuous = true;
+		newRecognition.interimResults = true;
+		newRecognition.lang = 'en-US';
 
 		finalText = '';
 		interimText = '';
 		error = null;
 
-		recognition.onresult = (event: SpeechRecognitionEvent) => {
+		newRecognition.onresult = (event: SpeechRecognitionEvent) => {
 			let interim = '';
 			let final = '';
 
@@ -45,14 +90,14 @@ export function createSpeechRecognition() {
 			interimText = interim;
 		};
 
-		recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+		newRecognition.onerror = (event: SpeechRecognitionErrorEvent) => {
 			if (event.error !== 'aborted') {
 				error = `Speech recognition error: ${event.error}`;
 			}
 			isRecording = false;
 		};
 
-		recognition.onend = () => {
+		newRecognition.onend = () => {
 			isRecording = false;
 			const text = (finalText + (interimText ? ' ' + interimText : '')).trim();
 			interimText = '';
@@ -63,8 +108,9 @@ export function createSpeechRecognition() {
 			recognition = null;
 		};
 
-		recognition.start();
+		newRecognition.start();
 		isRecording = true;
+		recognition = newRecognition;
 	}
 
 	function stop(): Promise<string> {
@@ -79,12 +125,24 @@ export function createSpeechRecognition() {
 	}
 
 	return {
-		get isRecording() { return isRecording; },
-		get interimText() { return interimText; },
-		get finalText() { return finalText; },
-		get fullText() { return (finalText + (interimText ? ' ' + interimText : '')).trim(); },
-		get isSupported() { return isSupported; },
-		get error() { return error; },
+		get isRecording() {
+			return isRecording;
+		},
+		get interimText() {
+			return interimText;
+		},
+		get finalText() {
+			return finalText;
+		},
+		get fullText() {
+			return (finalText + (interimText ? ' ' + interimText : '')).trim();
+		},
+		get isSupported() {
+			return isSupported;
+		},
+		get error() {
+			return error;
+		},
 		start,
 		stop
 	};
