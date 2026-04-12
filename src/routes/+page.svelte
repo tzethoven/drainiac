@@ -4,19 +4,36 @@
     import { createTodoStore } from "$lib/utils/todo-store.svelte";
     import { createReadingStore } from "$lib/utils/reading-store.svelte";
     import { createWatchStore } from "$lib/utils/watch-store.svelte";
+    import { createEndOfDayStore } from "$lib/utils/end-of-day-store.svelte";
     import { CATEGORIES, getCategoryInfo } from "$lib/types/transcription";
     import type { Category } from "$lib/types/transcription";
     import ThemeToggle from "$lib/components/ThemeToggle.svelte";
     import { fade, slide } from "svelte/transition";
+    import { goto } from '$app/navigation';
 
     const speech = createSpeechRecognition();
     const store = createTranscriptionStore();
     const todoStore = createTodoStore();
     const readingStore = createReadingStore();
     const watchStore = createWatchStore();
+    const eodStore = createEndOfDayStore();
 
     let stopping = false;
     let selectedCategory = $state<Category | 'all'>('all');
+    let showEodPrompt = $state(false);
+    let eodQueueLength = $state(0);
+
+    // Check if we should show end-of-day prompt
+    $effect(() => {
+        const queue = eodStore.buildQueue(
+            store.transcriptions,
+            todoStore.todos,
+            readingStore.items,
+            watchStore.items
+        );
+        eodQueueLength = queue.length;
+        showEodPrompt = eodStore.shouldShowPrompt(queue.length);
+    });
 
     function onPointerDown() {
         stopping = false;
@@ -92,9 +109,47 @@
             >
                 Watching
             </a>
+            <a 
+                href="/end-of-day" 
+                class="rounded-lg border border-border bg-gradient-to-r from-blue-500/20 to-purple-500/20 px-3 py-2 text-sm font-medium text-foreground hover:from-blue-500/30 hover:to-purple-500/30 transition-colors"
+            >
+                🌙 End of Day
+            </a>
             <ThemeToggle />
         </div>
     </div>
+
+    <!-- End of Day Prompt -->
+    {#if showEodPrompt}
+        <div class="w-full max-w-2xl mb-4" transition:slide={{ duration: 300 }}>
+            <div class="rounded-lg border border-border bg-gradient-to-r from-blue-500/10 to-purple-500/10 p-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h3 class="text-base font-medium text-foreground mb-1">
+                            🌙 Ready to wrap up your day?
+                        </h3>
+                        <p class="text-sm text-muted-foreground">
+                            You have {eodQueueLength} {eodQueueLength === 1 ? 'item' : 'items'} to process.
+                        </p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button
+                            onclick={() => goto('/end-of-day')}
+                            class="rounded-lg bg-gradient-to-r from-blue-500 to-purple-500 px-4 py-2 text-sm font-medium text-white hover:from-blue-600 hover:to-purple-600 transition-all"
+                        >
+                            Start Processing
+                        </button>
+                        <button
+                            onclick={() => showEodPrompt = false}
+                            class="rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors"
+                        >
+                            Later
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {/if}
 
     {#if !speech.isSupported}
         <div

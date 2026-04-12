@@ -140,6 +140,34 @@ export function createProgressStore() {
 		};
 	}
 
+	// Generic XP award (for end-of-day bonus, media completion, etc.)
+	function awardXP(xpAmount: number): {
+		xp: number;
+		levelUp: boolean;
+		newLevel: number;
+	} {
+		const oldLevel = progress.level;
+
+		// Update progress
+		progress = {
+			...progress,
+			xp: progress.xp + xpAmount
+		};
+
+		// Calculate new level
+		const newLevel = calculateLevel(progress.xp);
+		const levelUp = newLevel > oldLevel;
+		progress.level = newLevel;
+
+		saveToStorage(progress);
+
+		return {
+			xp: xpAmount,
+			levelUp,
+			newLevel
+		};
+	}
+
 	function getXPProgress(): { current: number; total: number; percentage: number } {
 		const currentLevelXP = (progress.level - 1) * (progress.level - 1) * 100;
 		const nextLevelXP = progress.level * progress.level * 100;
@@ -159,6 +187,7 @@ export function createProgressStore() {
 			return progress;
 		},
 		awardTodoXP,
+		awardXP,
 		getXPProgress,
 		get xpToNextLevel() {
 			return calculateXPToNextLevel(progress.level, progress.xp);

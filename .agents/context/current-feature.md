@@ -1,12 +1,36 @@
-# Current Feature
+# Current Feature: End-of-Day Processing
 
 ## Status
 
-In Review
+In Progress
 
 ## Goals
 
+- Create dedicated End-of-Day Processing interface accessible via button or automatic prompt
+- Guide user through processing queued items from all categories (uncategorized transcriptions, completed todos, new read/watch items, notes/ideas)
+- Show daily accomplishment summary (todos completed, XP earned, streak status, items processed)
+- Implement one-at-a-time focused card view for processing items with relevant actions
+- Award +50 bonus XP for completing the end-of-day ritual
+- Create EndOfDaySession data model and localStorage persistence
+- Optional end-of-day reflection prompt
+- Automatic prompt after 8 PM if unprocessed items exist
+- Calm, focused UI design with progress indicators
+
 ## Notes
+
+- **Priority:** Medium
+- **Core Philosophy:** "Capture fast, process later" - this completes the processing loop
+- **Design Principles:** Calm, not overwhelming. Focus on closure and satisfaction, not guilt or pressure
+- **Dependencies:** Todo List Manager, Gamified Todos, Code Word Categorization
+- **Bonus XP:** Award 50 XP once per day for completing ritual
+- **Data Model:** EndOfDaySession stored in localStorage with date, itemsProcessed, todosCompleted, xpEarned, reflectionNote, completedAt
+- **Actions by Category:**
+  - Uncategorized: Assign category, delete, keep as note, skip
+  - Completed Todos: Archive or keep active
+  - Read/Watch: Set priority, mark as next, delete
+  - Notes/Ideas: Add tags, promote to todo, keep, delete
+- **Empty Queue:** Show summary immediately with "Nothing to process" message
+- **Scope:** End-of-day only, weekly review is out of scope
 
 ## History
 
