@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Reading & Watch Lists**: Dedicated `/reading` and `/watching` pages with status tracking (Queued/In Progress/Completed), "What's Next?" picker for decision-making, full CRUD operations, type selectors, 5-star ratings, and XP calculation. Voice-captured items automatically sync via dual-write.
 - **UI Design System**: Comprehensive design system with CSS variables for spacing, typography, shadows, and animation timing. Dark mode with theme toggle (persists to localStorage), smooth page/list/modal animations, button press feedback, and respect for prefers-reduced-motion accessibility.
 - **Gamified Todos**: XP rewards for completing todos (10 base, priority multipliers, +5 streak bonus), level progression system (Level = sqrt(XP/100) + 1), daily completion streaks with 3-hour grace period, progress dashboard with level badge/XP bar/streak indicator, satisfying completion animations (+XP float-up, level-up modal with confetti).
+- **Media Metadata Editing**: Edit modal for reading/watch items with fields for source (author/publication/platform), personal notes, and tags. Metadata displayed on item cards with emojis (📝 source, 💭 notes, 🏷️ tags). Comma-separated tag input with parsing, theme-aware modal, keyboard shortcuts (ESC), form validation.
 
 ### Changed
 
