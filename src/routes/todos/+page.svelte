@@ -1,17 +1,26 @@
 <script lang="ts">
 	import { createTodoStore } from '$lib/utils/todo-store.svelte';
+	import { createProgressStore } from '$lib/utils/progress-store.svelte';
 	import type { TodoStatus, TodoPriority } from '$lib/types/todo';
 	import { PRIORITY_COLORS } from '$lib/types/todo';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
+	import ProgressDashboard from '$lib/components/ProgressDashboard.svelte';
+	import XPGainAnimation from '$lib/components/XPGainAnimation.svelte';
+	import LevelUpModal from '$lib/components/LevelUpModal.svelte';
 	import { fade, slide } from 'svelte/transition';
 
 	const todoStore = createTodoStore();
+	const progressStore = createProgressStore();
 
 	let filter = $state<'all' | TodoStatus>('all');
 	let editingId = $state<string | null>(null);
 	let editText = $state('');
 	let deleteConfirmId = $state<string | null>(null);
 	let newTodoText = $state('');
+	let showXPGain = $state(false);
+	let xpGained = $state(0);
+	let showLevelUp = $state(false);
+	let newLevel = $state(1);
 
 	const filteredTodos = $derived(
 		filter === 'all' ? todoStore.todos : todoStore.getByStatus(filter as TodoStatus)
@@ -67,6 +76,29 @@
 			newTodoText = '';
 		}
 	}
+
+	function handleToggleComplete(todoId: string, currentStatus: TodoStatus, priority: TodoPriority | undefined) {
+		// Toggle the todo status
+		todoStore.toggleComplete(todoId);
+
+		// Award XP only when marking as complete (not when uncompleting)
+		if (currentStatus === 'pending') {
+			const result = progressStore.awardTodoXP(priority);
+			
+			// Show XP gain animation
+			xpGained = result.xp;
+			showXPGain = true;
+			setTimeout(() => {
+				showXPGain = false;
+			}, 1000);
+
+			// Show level up modal if leveled up
+			if (result.levelUp) {
+				newLevel = result.newLevel;
+				showLevelUp = true;
+			}
+		}
+	}
 </script>
 
 <div class="container mx-auto max-w-4xl px-4 py-8" in:fade={{ duration: 300 }}>
@@ -96,6 +128,9 @@
 			</button>
 		</form>
 	</header>
+
+	<!-- Progress Dashboard -->
+	<ProgressDashboard />
 
 	<!-- Filter Tabs -->
 	<div class="mb-6 flex gap-2 border-b border-gray-200">
@@ -148,7 +183,7 @@
 					<input
 						type="checkbox"
 						checked={todo.status === 'complete'}
-						onchange={() => todoStore.toggleComplete(todo.id)}
+						onchange={() => handleToggleComplete(todo.id, todo.status, todo.priority)}
 						class="h-5 w-5 cursor-pointer rounded border-border text-primary focus:ring-2 focus:ring-ring transition-all"
 					/>
 
@@ -292,3 +327,13 @@
 		</div>
 	{/if}
 </div>
+
+<!-- XP Gain Animation -->
+{#if showXPGain}
+	<XPGainAnimation xp={xpGained} />
+{/if}
+
+<!-- Level Up Modal -->
+{#if showLevelUp}
+	<LevelUpModal level={newLevel} onClose={() => (showLevelUp = false)} />
+{/if}
