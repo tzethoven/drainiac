@@ -21,6 +21,7 @@ export const CATEGORY_MAP: Record<string, Category> = {
 	watch: 'watch',
 	note: 'note',
 	idea: 'idea',
+	id: 'idea', // Speech recognition often transcribes "idea" as "ID"
 	habit: 'habit'
 };
 
