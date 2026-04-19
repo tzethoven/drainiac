@@ -10,7 +10,7 @@ The End-of-Day Processing feature completes Drainiac's core "capture fast, proce
 
 ## Purpose
 
-Throughout the day, users capture thoughts via voice without categorizing or acting on them. By evening, this creates a queue of unprocessed items. The end-of-day ritual provides:
+Throughout the day, users capture thoughts via voice without categorizing or acting on them. A particularly common scenario is **capturing thoughts triggered by consuming content** — a book chapter sparks an idea, a podcast episode surfaces a todo, a film raises a reflection. In these moments the user records quickly without breaking focus, trusting that Drainiac holds the thought. By evening, this creates a queue of unprocessed items. The end-of-day ritual provides:
 
 - **Calm, focused environment** for processing captured items one at a time
 - **Closure & satisfaction** from seeing daily accomplishments

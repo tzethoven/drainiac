@@ -28,11 +28,12 @@ function applyTheme(theme: 'light' | 'dark') {
 }
 
 export function createThemeStore() {
-	let theme = $state<'light' | 'dark'>(getInitialTheme());
+	const initialTheme = getInitialTheme();
+	let theme = $state<'light' | 'dark'>(initialTheme);
 
 	// Apply theme on initialization
 	if (browser) {
-		applyTheme(theme);
+		applyTheme(initialTheme);
 	}
 
 	function toggle() {

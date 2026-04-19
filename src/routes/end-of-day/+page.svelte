@@ -341,8 +341,8 @@
 
 				<!-- Category Picker Modal -->
 				{#if showCategoryPicker}
-					<div class="modal-backdrop" onclick={() => showCategoryPicker = false} transition:fade={{ duration: 200 }}>
-						<div class="modal" onclick={(e) => e.stopPropagation()} transition:fade={{ duration: 200 }}>
+					<div class="modal-backdrop" role="presentation" onclick={() => showCategoryPicker = false} onkeydown={(e) => e.key === 'Escape' && (showCategoryPicker = false)} transition:fade={{ duration: 200 }}>
+						<div class="modal" role="presentation" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} transition:fade={{ duration: 200 }}>
 							<h3>Assign Category</h3>
 							<div class="category-grid">
 								<button class="category-btn" onclick={() => handleAssignCategory('todo')}>

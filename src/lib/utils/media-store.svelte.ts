@@ -67,16 +67,19 @@ export function createMediaStore<T extends BaseMediaItem>(config: MediaStoreConf
 		}
 	}
 
-	let items = $state<T[]>(storage.load());
-
-	// Migrate existing transcriptions if needed
-	if (typeof window !== 'undefined' && items.length === 0) {
-		const migrated = migrateFromTranscriptions();
-		if (migrated.length > 0) {
-			items = migrated;
-			storage.save(items);
+	function loadInitialItems(): T[] {
+		const stored = storage.load();
+		if (typeof window !== 'undefined' && stored.length === 0) {
+			const migrated = migrateFromTranscriptions();
+			if (migrated.length > 0) {
+				storage.save(migrated);
+				return migrated;
+			}
 		}
+		return stored;
 	}
+
+	let items = $state<T[]>(loadInitialItems());
 
 	function add(title: string, type?: T['type'], source?: string): T {
 		const item: T = {

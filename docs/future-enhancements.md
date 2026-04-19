@@ -1,5 +1,32 @@
 # Future Enhancements
 
+## Content Consumption — Session Mode (Medium Priority)
+
+**Status:** Not implemented  
+**Impact:** Medium — directly supports a core use case
+
+When consuming a piece of content (book chapter, podcast, film, article), the user naturally generates ideas, todos, and notes. Currently these are captured as standalone voice notes with no link to the source material.
+
+**User scenario:**
+> User is watching a documentary and captures 3 ideas and 1 todo via voice. Later, during end-of-day processing, there is no way to know all four items came from the same source or what that source was.
+
+**Proposed feature — Content Session Mode:**
+- User nominates what they are consuming before they start (links to a reading/watch item, or a freeform title)
+- All voice captures during that session are automatically tagged with the source (e.g. `source: "Atomic Habits – Ch. 3"`)
+- Session ends when user explicitly closes it or navigates away
+- Tags/source visible in end-of-day processing and search results
+
+**Minimal alternative (lower effort):**
+- Add a new code word (e.g. `"From"`) that allows the user to prefix a capture with a source inline: *"From Atomic Habits — Idea: habit stacking for morning routine"*
+- Parser extracts source name and stores it alongside the capture
+
+**Implementation notes:**
+- Session state would be ephemeral (in-memory, not persisted across app restarts)
+- Source field already exists on `ReadingItem` / `WatchItem` — tag could reference the item ID
+- Estimated effort (session mode): 4–6 hours; (code word approach): 1–2 hours
+
+---
+
 ## Reading & Watch Lists
 
 ### Metadata Editing (Medium Priority)

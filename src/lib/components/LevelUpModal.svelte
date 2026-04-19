@@ -36,7 +36,9 @@
 
 <div
 	class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
+	role="presentation"
 	onclick={onClose}
+	onkeydown={(e) => e.key === 'Escape' && onClose()}
 	in:fade={{ duration: 200 }}
 	out:fade={{ duration: 200 }}
 >
@@ -53,7 +55,9 @@
 	<!-- Modal -->
 	<div
 		class="relative max-w-md rounded-lg bg-card p-8 shadow-xl border border-border text-center"
+		role="presentation"
 		onclick={(e) => e.stopPropagation()}
+		onkeydown={(e) => e.stopPropagation()}
 		in:scale={{ duration: 300, start: 0.8 }}
 		out:scale={{ duration: 200, start: 0.8 }}
 	>

@@ -51,6 +51,25 @@ Primary input method = voice. User speaks thought, app uses Web Speech API + AI 
 
 When no code word used, AI infers intent from context, asks confirmation before filing thought.
 
+### Content Consumption Use Case
+
+A key scenario Drainiac is designed to support: **consuming a piece of content** (a book chapter, podcast episode, film, article, lecture, etc.) and wanting to capture findings, reactions, or ideas triggered by that content — without breaking focus.
+
+**User scenario example:**
+> User is reading chapter 3 of a book. A concept sparks an idea. They hold the record button and say: *"Idea — habit stacking can apply to my morning routine"*. The capture is instant, frictionless, and linked to no particular source. Later, during end-of-day processing, they can review and connect that idea back to the content that inspired it.
+
+**Why this matters:**
+- Consuming content is a primary moment when new ideas and todos surface
+- Interrupting consumption to write notes in another tool breaks focus
+- Drainiac acts as the "capture inbox" while the user stays in the flow of the content
+
+**How it fits the existing system:**
+- Voice capture with code words (`Idea`, `Note`, `Todo`) is already the right tool for this scenario
+- The captured thought lands in the appropriate category (ideas, notes, todos) with no extra steps
+- No special mode needed — the existing capture flow handles this naturally
+
+**Future opportunity:** A lightweight "content session" mode where the user nominates what they are consuming (e.g. links to a reading/watch item) and all captures during that session are automatically tagged with that source. See `docs/future-enhancements.md` for details.
+
 ### Thought Processing Interface
 
 Structured dashboard where captured thoughts reviewed & acted on. Composed of several modules:
@@ -97,6 +116,7 @@ Core features:
 4. **Extensible categories** — code word system & category list should be easy to expand as new use cases emerge
 5. **Separation of work and private life** — work & private entries stored & interacted with in two isolated environments
 6. **Minimise time spent in app** — user delegates tasks to app so they can complete tasks in real world
+7. **Don't interrupt the flow** — especially during content consumption; capture must be so fast that the user never loses their place in what they were doing
 
 ---
 
