@@ -8,27 +8,6 @@ Goal: **relieve mental load** & **optimise focus**. Takes away pressure of thoug
 
 ---
 
-## Phase 1: Voice Capture MVP
-
-First deliverable = minimal PWA focused purely on voice capture.
-
-### Scope
-
-- **PWA setup** — installable, mobile-friendly, offline-capable shell
-- **Hold-to-record button** — single prominent button records user voice while pressed
-- **Real-time transcription** — uses Web Speech API to transcribe speech as user talks, displaying text live on screen
-- **Persist transcriptions** — save completed transcriptions to localStorage
-
-### Out of scope for Phase 1
-
-- Authentication
-- AI intent detection / code word routing
-- Thought processing interface (todos, media queue, notes)
-- Habit tracker
-- Backend / database
-
----
-
 ## Full Product Vision
 
 Sections below describe complete product Drainiac will become. Phase 1 = first step toward this vision.
@@ -100,9 +79,7 @@ Core features:
 - **Frontend framework:** SvelteKit (Svelte 5)
 - **Backend / data layer:** local-first with zero-sync
 - **Authentication:** BetterAuth with Google OAuth (single user)
-- **AI / NLP layer:** Start with Mistral AI, easy to switch
 - **Speech-to-text:** Web Speech API
-- **Voice control:** WebMCP API
 - **Data storage:** SQLite with Drizzle ORM (localStorage for Phase 1)
 - **Notifications / reminders:** Via Web Push API
 

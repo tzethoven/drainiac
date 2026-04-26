@@ -8,8 +8,6 @@ Read for full project context:
 
 - .agents/context/project-overview.md
 - .agents/rules/code-standards.md
-- .agents/rules/workflow.md
-- .agents/context/current-feature.md
 
 ## Commands
 
