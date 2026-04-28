@@ -4,6 +4,8 @@
 
 **Drainiac** = personal productivity PWA. Core philosophy: **capture fast, process later** — frictionless way offload thoughts throughout day, return to them in structured, motivating environment.
 
+Alternative names: "AfterThought", "Memento", "Souvenir"
+
 Goal: **relieve mental load** & **optimise focus**. Takes away pressure of thoughts floating in head, enables focus on one thing at time, live in moment.
 
 ---
