@@ -83,6 +83,8 @@ export function createSpeechController(
       return;
     }
     error = null;
+    interimText = "";
+    finalText = "";
     recognition = factory();
     recognition.continuous = true;
     recognition.interimResults = true;

@@ -13,18 +13,15 @@
 
     let isHolding = $state(false);
     let isCancelling = $state(false);
-    let lastFinal = $state("");
     let isFinalVisible = $state(false);
-    let finalTimeout: ReturnType<typeof setTimeout> | null = null;
     let pointerStartY = 0;
     let activePointerId: number | null = null;
 
-    function clearFinalTimeout() {
-        if (finalTimeout) {
-            clearTimeout(finalTimeout);
-            finalTimeout = null;
-        }
-    }
+    $effect(() => {
+        if (!isFinalVisible) return;
+        const t = setTimeout(() => { isFinalVisible = false; }, FINAL_DISPLAY_MS);
+        return () => clearTimeout(t);
+    });
 
     function beginHold(event: PointerEvent) {
         if (activePointerId !== null) return;
@@ -33,9 +30,7 @@
         pointerStartY = event.clientY;
         isCancelling = false;
         isHolding = true;
-        clearFinalTimeout();
         isFinalVisible = false;
-        lastFinal = "";
         (event.target as HTMLElement).setPointerCapture?.(event.pointerId);
         controller.start();
     }
@@ -68,12 +63,7 @@
                 displayText: parsed.displayText,
                 rawTranscript: parsed.rawTranscript,
             });
-            lastFinal = parsed.displayText;
             isFinalVisible = true;
-            clearFinalTimeout();
-            finalTimeout = setTimeout(() => {
-                isFinalVisible = false;
-            }, FINAL_DISPLAY_MS);
         }
     }
 
@@ -90,19 +80,33 @@
     );
 </script>
 
-<div class="sticky top-0 h-svh flex flex-col justify-end items-center p-8 gap-6 pointer-events-none">
+<div
+    class="h-full flex flex-col justify-end items-center gap-6 pointer-events-none"
+>
     <div
         class="w-[min(100%,32rem)] min-h-24 flex items-end justify-center text-center pointer-events-none"
         aria-live="polite"
     >
         {#if controller.error}
-            <p class="m-0 text-sm leading-[1.6] text-destructive">{controller.error}</p>
+            <p class="m-0 text-sm leading-[1.6] text-destructive">
+                {controller.error}
+            </p>
         {:else if isHolding && liveTranscript}
-            <p class="m-0 text-lg leading-[1.6] {isCancelling ? 'text-destructive line-through opacity-70' : 'text-foreground'}">{liveTranscript}</p>
+            <p
+                class="m-0 text-lg leading-[1.6] {isCancelling
+                    ? 'text-destructive line-through opacity-70'
+                    : 'text-foreground'}"
+            >
+                {liveTranscript}
+            </p>
         {:else if isFinalVisible}
-            <p class="m-0 text-lg leading-[1.6] text-foreground opacity-[0.85]">{lastFinal}</p>
+            <p class="m-0 text-lg leading-[1.6] text-foreground opacity-[0.85]">
+                {controller.finalText}
+            </p>
         {:else if isHolding}
-            <p class="m-0 text-sm leading-[1.6] text-muted-foreground">Listening…</p>
+            <p class="m-0 text-sm leading-[1.6] text-muted-foreground">
+                Listening…
+            </p>
         {:else}
             <p class="m-0 text-sm leading-[1.6] text-muted-foreground">
                 Hold the button and speak. Slide up to cancel.
@@ -112,7 +116,11 @@
 
     <button
         type="button"
-        class="pointer-events-auto w-20 h-20 rounded-full border-0 shadow-lg flex items-center justify-center touch-none select-none cursor-pointer active:scale-100 [-webkit-tap-highlight-color:transparent] {isCancelling ? 'bg-muted text-muted-foreground' : isHolding ? 'bg-destructive text-primary-foreground' : 'bg-primary text-primary-foreground'}"
+        class="pointer-events-auto w-20 h-20 rounded-full border-0 shadow-lg flex items-center justify-center touch-none select-none cursor-pointer active:scale-100 [-webkit-tap-highlight-color:transparent] {isCancelling
+            ? 'bg-muted text-muted-foreground'
+            : isHolding
+              ? 'bg-destructive text-primary-foreground'
+              : 'bg-primary text-primary-foreground'}"
         aria-label="Hold to record"
         onpointerdown={beginHold}
         onpointermove={updateHold}
@@ -123,7 +131,9 @@
         }}
     >
         <span
-            class="w-6 h-6 bg-primary-foreground transition-[transform,border-radius] duration-200 ease-out {isHolding ? 'rounded-[0.25rem] scale-[0.8]' : 'rounded-full'}"
+            class="w-6 h-6 bg-primary-foreground transition-[transform,border-radius] duration-200 ease-out {isHolding
+                ? 'rounded-[0.25rem] scale-[0.8]'
+                : 'rounded-full'}"
         ></span>
     </button>
 </div>
