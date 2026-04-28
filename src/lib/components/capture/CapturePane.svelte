@@ -1,7 +1,10 @@
 <script lang="ts">
     import { createSpeechController } from "$lib/utils/speech-controller.svelte";
+    import { parse } from "$lib/utils/transcript-parser";
+    import { getEntriesContext } from "$lib/stores/entries-store.svelte";
 
     const controller = createSpeechController();
+    const entriesStore = getEntriesContext();
 
     /** How long to keep the final transcript on screen after release (ms). */
     const FINAL_DISPLAY_MS = 3000;
@@ -59,7 +62,13 @@
         ).trim();
         controller.stop();
         if (committed.length > 0) {
-            lastFinal = committed;
+            const parsed = parse(committed);
+            entriesStore.add({
+                category: parsed.category,
+                displayText: parsed.displayText,
+                rawTranscript: parsed.rawTranscript,
+            });
+            lastFinal = parsed.displayText;
             isFinalVisible = true;
             clearFinalTimeout();
             finalTimeout = setTimeout(() => {
@@ -120,8 +129,9 @@
 
 <style>
     .capture-pane {
-        position: fixed;
-        inset: 0;
+        position: sticky;
+        top: 0;
+        height: 100svh;
         display: flex;
         flex-direction: column;
         justify-content: flex-end;

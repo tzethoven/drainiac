@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [tailwindcss(), sveltekit()],
   server: {
     host: "0.0.0.0",
-    allowedHosts: [".trycloudflare.com"],
+    allowedHosts: [".trycloudflare.com", ".tobinator.trade"],
   },
   test: {
     environment: "jsdom",
