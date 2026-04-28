@@ -3,7 +3,7 @@ import type {
   SpeechRecognitionEventLike,
   SpeechRecognitionLike,
   SpeechRecognitionResultLike,
-} from "./speech-controller.svelte";
+} from "./speech-engine";
 
 /**
  * Test double for `SpeechRecognitionLike`. Lets tests drive the controller

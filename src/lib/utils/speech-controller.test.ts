@@ -100,10 +100,11 @@ describe("speech-controller", () => {
 
     controller.start();
     fake.current().emitFinal("committed thought.");
+    const recordingInstance = fake.current(); // capture before stop triggers restart
     controller.stop();
-    fake.current().emitEnd();
+    recordingInstance.emitEnd();
 
-    expect(fake.current().stopped).toBe(true);
+    expect(recordingInstance.stopped).toBe(true);
     expect(controller.state).toBe("idle");
     expect(controller.finalText).toBe("committed thought.");
   });
@@ -115,10 +116,11 @@ describe("speech-controller", () => {
     controller.start();
     fake.current().emitFinal("throwaway");
     fake.current().emitInterim(" more");
+    const recordingInstance = fake.current(); // capture before cancel triggers restart
     controller.cancel();
-    fake.current().emitEnd();
+    recordingInstance.emitEnd();
 
-    expect(fake.current().aborted).toBe(true);
+    expect(recordingInstance.aborted).toBe(true);
     expect(controller.state).toBe("idle");
     expect(controller.finalText).toBe("");
     expect(controller.interimText).toBe("");
