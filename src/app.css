@@ -168,6 +168,20 @@
     --shadow-lg: var(--shadow-lg);
 }
 
+@layer components {
+    /* Badge category variants — defined here so dynamic class names (badge-{category})
+       are always included regardless of static analysis. */
+    .badge-todo {
+        background: color-mix(in oklab, var(--primary) 20%, transparent);
+        color: var(--primary);
+    }
+
+    .badge-idea {
+        background: color-mix(in oklab, var(--accent) 20%, transparent);
+        color: var(--accent-foreground);
+    }
+}
+
 @layer base {
     * {
         @apply border-border outline-ring/50;

@@ -90,18 +90,21 @@
     );
 </script>
 
-<div class="capture-pane">
-    <div class="transcript-area" aria-live="polite">
+<div class="sticky top-0 h-svh flex flex-col justify-end items-center p-8 gap-6 pointer-events-none">
+    <div
+        class="w-[min(100%,32rem)] min-h-24 flex items-end justify-center text-center pointer-events-none"
+        aria-live="polite"
+    >
         {#if controller.error}
-            <p class="error">{controller.error}</p>
+            <p class="m-0 text-sm leading-[1.6] text-destructive">{controller.error}</p>
         {:else if isHolding && liveTranscript}
-            <p class="live" class:cancelling={isCancelling}>{liveTranscript}</p>
+            <p class="m-0 text-lg leading-[1.6] {isCancelling ? 'text-destructive line-through opacity-70' : 'text-foreground'}">{liveTranscript}</p>
         {:else if isFinalVisible}
-            <p class="final">{lastFinal}</p>
+            <p class="m-0 text-lg leading-[1.6] text-foreground opacity-[0.85]">{lastFinal}</p>
         {:else if isHolding}
-            <p class="hint">Listening…</p>
+            <p class="m-0 text-sm leading-[1.6] text-muted-foreground">Listening…</p>
         {:else}
-            <p class="hint muted">
+            <p class="m-0 text-sm leading-[1.6] text-muted-foreground">
                 Hold the button and speak. Slide up to cancel.
             </p>
         {/if}
@@ -109,125 +112,18 @@
 
     <button
         type="button"
-        class="record-button"
-        class:recording={isHolding}
-        class:cancelling={isCancelling}
+        class="pointer-events-auto w-20 h-20 rounded-full border-0 shadow-lg flex items-center justify-center touch-none select-none cursor-pointer active:scale-100 [-webkit-tap-highlight-color:transparent] {isCancelling ? 'bg-muted text-muted-foreground' : isHolding ? 'bg-destructive text-primary-foreground' : 'bg-primary text-primary-foreground'}"
         aria-label="Hold to record"
         onpointerdown={beginHold}
         onpointermove={updateHold}
         onpointerup={endHold}
         onpointercancel={cancelHold}
         onpointerleave={(e) => {
-            // Treat leaving the button while holding as continued hold; cancel only
-            // triggers via the upward-drag threshold above.
             if (e.pointerId === activePointerId) updateHold(e);
         }}
     >
-        <span class="dot"></span>
+        <span
+            class="w-6 h-6 bg-primary-foreground transition-[transform,border-radius] duration-200 ease-out {isHolding ? 'rounded-[0.25rem] scale-[0.8]' : 'rounded-full'}"
+        ></span>
     </button>
 </div>
-
-<style>
-    .capture-pane {
-        position: sticky;
-        top: 0;
-        height: 100svh;
-        display: flex;
-        flex-direction: column;
-        justify-content: flex-end;
-        align-items: center;
-        padding: var(--spacing-xl);
-        gap: var(--spacing-lg);
-        pointer-events: none;
-    }
-
-    .transcript-area {
-        width: min(100%, 32rem);
-        min-height: 6rem;
-        display: flex;
-        align-items: flex-end;
-        justify-content: center;
-        text-align: center;
-        pointer-events: none;
-    }
-
-    .transcript-area p {
-        margin: 0;
-        font-size: var(--font-size-body);
-        line-height: var(--line-height-normal);
-    }
-
-    .transcript-area .live {
-        color: var(--foreground);
-        font-size: var(--font-size-h3);
-    }
-
-    .transcript-area .live.cancelling {
-        color: var(--destructive);
-        text-decoration: line-through;
-        opacity: 0.7;
-    }
-
-    .transcript-area .final {
-        color: var(--foreground);
-        font-size: var(--font-size-h3);
-        opacity: 0.85;
-    }
-
-    .transcript-area .hint {
-        color: var(--muted-foreground);
-        font-size: var(--font-size-small);
-    }
-
-    .transcript-area .error {
-        color: var(--destructive);
-        font-size: var(--font-size-small);
-    }
-
-    .record-button {
-        pointer-events: auto;
-        width: 5rem;
-        height: 5rem;
-        border-radius: 50%;
-        border: none;
-        background: var(--primary);
-        color: var(--primary-foreground);
-        box-shadow: var(--shadow-lg);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        touch-action: none;
-        user-select: none;
-        -webkit-user-select: none;
-        -webkit-tap-highlight-color: transparent;
-        cursor: pointer;
-    }
-
-    .record-button .dot {
-        width: 1.5rem;
-        height: 1.5rem;
-        border-radius: 50%;
-        background: var(--primary-foreground);
-        transition:
-            transform var(--duration-fast) var(--ease-out),
-            border-radius var(--duration-fast) var(--ease-out);
-    }
-
-    .record-button.recording {
-        background: var(--destructive);
-    }
-
-    .record-button.recording .dot {
-        border-radius: 0.25rem;
-        transform: scale(0.8);
-    }
-
-    .record-button.cancelling {
-        background: var(--muted);
-        color: var(--muted-foreground);
-    }
-
-    .record-button:active:not(:disabled) {
-        transform: none;
-    }
-</style>
