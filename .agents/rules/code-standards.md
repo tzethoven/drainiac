@@ -79,10 +79,13 @@
 **CRITICAL**: We are using Tailwind CSS v4, which uses CSS-based configuration.
 
 - **DO NOT** create `tailwind.config.ts` or `tailwind.config.js` files (those are for v3)
-- All theme configuration must be done in CSS using the `@theme` directive
+- All theme configuration must be done in CSS using the `@theme` directive in `src/app.css`
 - Use CSS custom properties for colors, spacing, etc.
 - No JavaScript-based config allowed
-- No inline styles
+- **No inline styles** — use Tailwind utility classes only
+- **No `<style>` blocks** in `.svelte` components — all component styling must use Tailwind utility classes in the `class` attribute
+- For styles that cannot be expressed as Tailwind utilities (e.g. dynamic `color-mix()` values, complex selectors, or dynamic class-name variants), define them in `@layer components` inside `src/app.css`
+- Dynamic class names (e.g. `badge-{category}`) must be defined in `@layer components` in `src/app.css` so they are always emitted regardless of static scanning
 - Light mode first, dark mode as option
 
 Example v4 configuration in `app.css`:
@@ -94,6 +97,26 @@ Example v4 configuration in `app.css`:
   --color-primary: oklch(50% 0.2 250);
   --font-sans: 'Geist Variable', system-ui, sans-serif;
 }
+
+@layer components {
+  /* Dynamic or complex variants that can't be expressed as inline utilities */
+  .badge-todo {
+    background: color-mix(in oklab, var(--primary) 20%, transparent);
+    color: var(--primary);
+  }
+}
+```
+
+Conditional classes in Svelte components should use template-literal interpolation or `clsx`:
+
+```svelte
+<!-- ✅ Correct -->
+<button class="px-4 py-2 {isActive ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}">
+
+<!-- ❌ Wrong — no style blocks -->
+<style>
+  .my-button { background: var(--primary); }
+</style>
 ```
 
 ## shadcn-svelte
