@@ -1,13 +1,30 @@
 <script lang="ts">
-    import { getEntriesContext } from "$lib/stores/entries-store.svelte";
+    import { getEntriesContext, type Entry } from "$lib/stores/entries-store.svelte";
     import type { Category } from "$lib/utils/transcript-parser";
     import { group } from "$lib/utils/day-grouper";
     import InboxList from "./InboxList.svelte";
+    import EditSheet from "./EditSheet.svelte";
+    import MenuSheet from "./MenuSheet.svelte";
 
     type Filter = "all" | Category;
+    type SheetState =
+        | { kind: "none" }
+        | { kind: "edit"; entry: Entry }
+        | { kind: "menu"; entry: Entry };
 
     const store = getEntriesContext();
     let filter = $state<Filter>("all");
+    let sheet = $state<SheetState>({ kind: "none" });
+
+    function openEdit(entry: Entry) {
+        sheet = { kind: "edit", entry };
+    }
+    function openMenu(entry: Entry) {
+        sheet = { kind: "menu", entry };
+    }
+    function closeSheet() {
+        sheet = { kind: "none" };
+    }
 
     const filtered = $derived(
         filter === "all"
@@ -59,5 +76,11 @@
         </div>
     </header>
 
-    <InboxList {sections} />
+    <InboxList {sections} onTap={openEdit} onLongPress={openMenu} />
 </div>
+
+{#if sheet.kind === "edit"}
+    <EditSheet entry={sheet.entry} onClose={closeSheet} />
+{:else if sheet.kind === "menu"}
+    <MenuSheet entry={sheet.entry} onClose={closeSheet} />
+{/if}

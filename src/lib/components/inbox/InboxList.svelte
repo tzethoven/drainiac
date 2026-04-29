@@ -1,12 +1,15 @@
 <script lang="ts">
     import type { Section } from "$lib/utils/day-grouper";
+    import type { Entry } from "$lib/stores/entries-store.svelte";
     import EntryRow from "./EntryRow.svelte";
 
     interface Props {
         sections: Section[];
+        onTap: (entry: Entry) => void;
+        onLongPress: (entry: Entry) => void;
     }
 
-    const { sections }: Props = $props();
+    const { sections, onTap, onLongPress }: Props = $props();
 </script>
 
 {#if sections.length === 0}
@@ -24,7 +27,7 @@
                 </h2>
                 <ul class="list-none flex flex-col">
                     {#each section.entries as entry (entry.id)}
-                        <EntryRow {entry} />
+                        <EntryRow {entry} {onTap} {onLongPress} />
                     {/each}
                 </ul>
             </section>

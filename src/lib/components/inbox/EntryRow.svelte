@@ -3,13 +3,15 @@
   import type { Entry } from "$lib/stores/entries-store.svelte";
   import { getEntriesContext } from "$lib/stores/entries-store.svelte";
   import { getToastContext } from "$lib/stores/toast-store.svelte";
-  import { createSwipeState } from "./swipe-state";
+  import { createGestureState } from "./gesture-state";
 
   interface Props {
     entry: Entry;
+    onTap: (entry: Entry) => void;
+    onLongPress: (entry: Entry) => void;
   }
 
-  const { entry }: Props = $props();
+  const { entry, onTap, onLongPress }: Props = $props();
 
   const store = getEntriesContext();
   const toast = getToastContext();
@@ -19,47 +21,102 @@
   type Phase = "idle" | "dragging" | "rebounding" | "flying";
   let phase = $state<Phase>("idle");
   let translateX = $state(0);
+  let pulsing = $state(false);
 
-  let startX = 0;
-  let swipe = createSwipeState(100); // placeholder; recreated on each pointerdown
   let activeDirection = $state<"left" | "right" | "none">("none");
 
-  // Contextual label for the right-side reveal background
+  // Single gesture instance, reset on each pointerdown to pick up current rowWidth.
+  let gesture: ReturnType<typeof createGestureState> | null = null;
+
   const doneLabel = $derived(
     entry.done
       ? entry.category === "todo" ? "Undo Done" : "Undo Reviewed"
-      : entry.category === "todo" ? "Done" : "Reviewed"
+      : entry.category === "todo" ? "Done" : "Reviewed",
   );
+
+  // --- Callbacks invoked by the gesture state machine ---
+
+  function handleTap() {
+    // Only fire tap if we haven't visually moved.
+    activeDirection = "none";
+    onTap(entry);
+  }
+
+  function handleLongPress() {
+    activeDirection = "none";
+    translateX = 0;
+    // Haptic (no-op on iOS Safari).
+    if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+      navigator.vibrate(10);
+    }
+    // Visual pulse.
+    pulsing = true;
+    setTimeout(() => { pulsing = false; }, 120);
+    onLongPress(entry);
+  }
+
+  function handleCommitLeft() {
+    startCommitLeft();
+  }
+
+  function handleCommitRight() {
+    startCommitRight();
+  }
+
+  function handleRebound() {
+    startRebound();
+  }
 
   // --- Pointer handlers ---
 
   function onPointerDown(e: PointerEvent) {
-    if (phase !== "idle") return;
-    startX = e.clientX;
-    swipe = createSwipeState(liEl!.offsetWidth);
+    if (phase !== "idle" && phase !== "dragging") return;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    gesture = createGestureState({
+      rowWidth: liEl!.offsetWidth,
+      scheduler: (ms, cb) => {
+        const id = window.setTimeout(cb, ms);
+        return () => window.clearTimeout(id);
+      },
+      callbacks: {
+        onTap: handleTap,
+        onLongPress: handleLongPress,
+        onCommitLeft: handleCommitLeft,
+        onCommitRight: handleCommitRight,
+        onRebound: handleRebound,
+      },
+    });
     phase = "dragging";
+    translateX = 0;
+    activeDirection = "none";
+    gesture.onDown(e.clientX);
   }
 
   function onPointerMove(e: PointerEvent) {
-    if (phase !== "dragging") return;
-    translateX = swipe.onMove(e.clientX - startX);
-    if (translateX > 0) activeDirection = "right";
-    else if (translateX < 0) activeDirection = "left";
+    if (phase !== "dragging" || !gesture) return;
+    const tx = gesture.onMove(e.clientX);
+    translateX = tx;
+    if (tx > 0) activeDirection = "right";
+    else if (tx < 0) activeDirection = "left";
+    else activeDirection = "none";
   }
 
   function onPointerUp(e: PointerEvent) {
-    if (phase !== "dragging") return;
-    const result = swipe.onRelease(e.clientX - startX);
-    if (result === "commit-left") startCommitLeft();
-    else if (result === "commit-right") startCommitRight();
-    else startRebound();
+    if (phase !== "dragging" || !gesture) return;
+    gesture.onUp(e.clientX);
+    gesture = null;
+    // Tap and long-press don't trigger a rebound/commit animation; return to idle.
+    if (phase === "dragging") phase = "idle";
   }
 
   function onPointerCancel() {
-    if (phase !== "dragging") return;
-    startRebound();
+    if (phase !== "dragging" || !gesture) return;
+    gesture.onCancel();
+    gesture = null;
+    if (phase === "dragging") phase = "idle";
   }
+
+  // --- Commit / rebound animations (unchanged behavior from pre-gesture-state) ---
 
   function startRebound() {
     phase = "rebounding";
@@ -83,15 +140,10 @@
     const rowWidth = li.offsetWidth;
     const rowHeight = li.offsetHeight;
 
-    // Step 1: fly the row off-screen to the left
     phase = "flying";
     translateX = -(rowWidth + 50);
 
     setTimeout(() => {
-      // Step 2: capture current height and begin collapse animation.
-      // Set max-height to the current height first (no transition),
-      // then force a reflow so the browser registers the starting value,
-      // then switch to max-height: 0 with a transition.
       li.style.maxHeight = `${rowHeight}px`;
       li.style.overflow = "hidden";
 
@@ -115,7 +167,9 @@
       ? "transform 300ms cubic-bezier(0, 0, 0.2, 1)"
       : phase === "flying"
         ? "transform 200ms ease-in"
-        : "none",
+        : pulsing
+          ? "transform 120ms ease-out"
+          : "none",
   );
 </script>
 
@@ -124,6 +178,7 @@
   <div
     class="absolute inset-0 bg-green-500 flex items-center pl-4 gap-2 rounded-md"
     class:z-10={activeDirection === "right"}
+    class:opacity-0={activeDirection !== "right"}
     aria-hidden="true"
   >
     <Check size={20} class="text-white" />
@@ -134,6 +189,7 @@
   <div
     class="absolute inset-0 bg-destructive flex items-center justify-end pr-4 rounded-md"
     class:z-10={activeDirection === "left"}
+    class:opacity-0={activeDirection !== "left"}
     aria-hidden="true"
   >
     <Trash2 size={20} class="text-white" />
@@ -141,8 +197,10 @@
 
   <!-- Row content — slides left on swipe -->
   <div
+    role="button"
+    tabindex="0"
     class="relative z-20 flex items-start gap-2 py-2 px-4 rounded-md bg-card border border-border touch-pan-y select-none"
-    style:transform="translateX({translateX}px)"
+    style:transform={`translateX(${translateX}px) scale(${pulsing ? 0.98 : 1})`}
     style:transition={contentTransition}
     onpointerdown={onPointerDown}
     onpointermove={onPointerMove}
