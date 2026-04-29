@@ -4,6 +4,7 @@
 	"description": "Capture fast, process later",
 	"start_url": "/",
 	"display": "standalone",
+	"orientation": "portrait",
 	"background_color": "#c70036",
 	"theme_color": "#c70036",
 	"icons": [
