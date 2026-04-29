@@ -1,5 +1,6 @@
 <script lang="ts">
     import type { Section } from "$lib/utils/day-grouper";
+    import EntryRow from "./EntryRow.svelte";
 
     interface Props {
         sections: Section[];
@@ -21,22 +22,9 @@
                 >
                     {section.label}
                 </h2>
-                <ul class="list-none flex flex-col gap-2">
+                <ul class="list-none flex flex-col">
                     {#each section.entries as entry (entry.id)}
-                        <li
-                            class="flex items-start gap-2 py-2 px-4 rounded-md bg-card border border-border"
-                        >
-                            <span
-                                class="shrink-0 text-xs uppercase tracking-[0.05em] py-[0.125rem] px-2 rounded-sm bg-muted text-muted-foreground badge-{entry.category}"
-                                >{entry.category}</span
-                            >
-                            <span
-                                class="flex-auto text-base leading-[1.6] text-foreground break-words"
-                                class:line-through={entry.done}
-                                class:opacity-60={entry.done}
-                                >{entry.displayText}</span
-                            >
-                        </li>
+                        <EntryRow {entry} />
                     {/each}
                 </ul>
             </section>

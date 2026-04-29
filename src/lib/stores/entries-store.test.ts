@@ -149,6 +149,63 @@ describe("entries-store", () => {
     expect(remaining).not.toContain(c.id);
   });
 
+  describe("restore()", () => {
+    it("makes the entry appear in entries", () => {
+      const deps = makeDeps();
+      const store = createEntriesStore(deps);
+      const entry = store.add({ category: "todo", displayText: "Buy milk.", rawTranscript: "todo buy milk" });
+      store.remove(entry.id);
+      expect(store.entries).toHaveLength(0);
+
+      store.restore(entry);
+
+      expect(store.entries).toHaveLength(1);
+      expect(store.entries[0].id).toBe(entry.id);
+    });
+
+    it("preserves all original fields exactly", () => {
+      const deps = makeDeps();
+      deps.setNow(9_999);
+      const store = createEntriesStore(deps);
+      const entry = store.add({ category: "idea", displayText: "Great idea.", rawTranscript: "idea great idea" });
+      store.remove(entry.id);
+
+      store.restore(entry);
+
+      expect(store.entries[0]).toEqual(entry);
+    });
+
+    it("re-inserts at the correct createdAt-desc position among existing entries", () => {
+      const deps = makeDeps();
+      const store = createEntriesStore(deps);
+
+      deps.setNow(1_000);
+      const first = store.add({ category: "todo", displayText: "First.", rawTranscript: "todo first" });
+      deps.setNow(2_000);
+      store.add({ category: "note", displayText: "Second.", rawTranscript: "note second" });
+      deps.setNow(3_000);
+      store.add({ category: "idea", displayText: "Third.", rawTranscript: "idea third" });
+
+      store.remove(first.id);
+      store.restore(first);
+
+      expect(store.entries.map((e) => e.displayText)).toEqual(["Third.", "Second.", "First."]);
+    });
+
+    it("persists the restored entry so a new store instance can read it", () => {
+      const deps = makeDeps();
+      const store = createEntriesStore(deps);
+      const entry = store.add({ category: "todo", displayText: "Buy milk.", rawTranscript: "todo buy milk" });
+      store.remove(entry.id);
+      store.restore(entry);
+
+      const second = createEntriesStore({ storage: deps.storage });
+
+      expect(second.entries).toHaveLength(1);
+      expect(second.entries[0]).toEqual(entry);
+    });
+  });
+
   it("byCategory() returns only entries of the given category, reactively", () => {
     const deps = makeDeps();
     const store = createEntriesStore(deps);

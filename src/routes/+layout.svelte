@@ -5,6 +5,8 @@
 		createEntriesStore,
 		setEntriesContext,
 	} from "$lib/stores/entries-store.svelte";
+	import { createToastStore, setToastContext } from "$lib/stores/toast-store.svelte";
+	import Toast from "$lib/components/Toast.svelte";
 	import '../app.css';
 
 	let { children } = $props();
@@ -15,6 +17,8 @@
 			storage: browser ? localStorage : undefined,
 		}),
 	);
+
+	setToastContext(createToastStore());
 </script>
 
 <svelte:head>
@@ -22,3 +26,4 @@
 </svelte:head>
 
 {@render children()}
+<Toast />

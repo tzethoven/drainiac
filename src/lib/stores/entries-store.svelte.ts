@@ -37,6 +37,7 @@ export interface EntriesStore {
     patch: Partial<Pick<Entry, "displayText" | "category" | "done">>,
   ): void;
   remove(id: string): void;
+  restore(entry: Entry): void;
   clearDone(): void;
 }
 
@@ -92,6 +93,11 @@ export function createEntriesStore(
     persist();
   }
 
+  function restore(entry: Entry): void {
+    entries = [...entries, entry].sort((a, b) => b.createdAt - a.createdAt);
+    persist();
+  }
+
   function clearDone(): void {
     const next = entries.filter((e) => !e.done);
     if (next.length === entries.length) return;
@@ -109,6 +115,7 @@ export function createEntriesStore(
     add,
     update,
     remove,
+    restore,
     clearDone,
   };
 }
