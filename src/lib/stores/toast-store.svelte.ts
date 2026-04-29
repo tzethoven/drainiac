@@ -4,7 +4,7 @@ import { getContext, setContext } from "svelte";
 export interface ToastStore {
   readonly message: string | null;
   readonly undoEntry: Entry | null;
-  show(message: string, undoEntry: Entry): void;
+  show(message: string, undoEntry?: Entry): void;
   dismiss(): void;
 }
 
@@ -13,10 +13,10 @@ export function createToastStore(): ToastStore {
   let undoEntry = $state<Entry | null>(null);
   let timerId: ReturnType<typeof setTimeout> | null = null;
 
-  function show(msg: string, entry: Entry): void {
+  function show(msg: string, entry?: Entry): void {
     if (timerId !== null) clearTimeout(timerId);
     message = msg;
-    undoEntry = entry;
+    undoEntry = entry ?? null;
     timerId = setTimeout(dismiss, 5_000);
   }
 

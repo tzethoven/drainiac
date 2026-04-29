@@ -254,4 +254,47 @@ describe("entries-store", () => {
     });
     expect("processedAt" in rehydrated).toBe(false);
   });
+
+  it("add() with warning='partial-transcription' round-trips the flag", () => {
+    const deps = makeDeps();
+    const store = createEntriesStore(deps);
+
+    const entry = store.add({
+      category: "todo",
+      displayText: "Buy milk.",
+      rawTranscript: "todo buy milk",
+      warning: "partial-transcription",
+    });
+
+    expect(entry.warning).toBe("partial-transcription");
+    expect(store.entries[0].warning).toBe("partial-transcription");
+  });
+
+  it("add() without warning leaves the field undefined", () => {
+    const deps = makeDeps();
+    const store = createEntriesStore(deps);
+
+    const entry = store.add({
+      category: "note",
+      displayText: "Hello.",
+      rawTranscript: "note hello",
+    });
+
+    expect(entry.warning).toBeUndefined();
+  });
+
+  it("localStorage round-trip preserves the warning flag", () => {
+    const deps = makeDeps();
+    const first = createEntriesStore(deps);
+    first.add({
+      category: "todo",
+      displayText: "X.",
+      rawTranscript: "todo x",
+      warning: "partial-transcription",
+    });
+
+    const second = createEntriesStore({ storage: deps.storage });
+
+    expect(second.entries[0].warning).toBe("partial-transcription");
+  });
 });

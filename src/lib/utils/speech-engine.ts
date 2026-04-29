@@ -1,3 +1,5 @@
+import { debugLog } from "./debug-log";
+
 /**
  * Minimal subset of the Web Speech API `SpeechRecognition` interface that the
  * engine depends on. Declared locally so the module is testable without
@@ -35,6 +37,8 @@ export interface SpeechEngineOptions {
   onInterim: (text: string) => void;
   onFinal: (text: string) => void;
   onError: (error: string) => void;
+  /** Fires after a self-initiated stop() completes its onend flush. */
+  onStopped?: () => void;
 }
 
 export interface SpeechEngine {
@@ -71,6 +75,18 @@ export function createSpeechEngine(options: SpeechEngineOptions): SpeechEngine {
     if (!last) return;
     const text = last[0].transcript;
     const full = sessionAccumulated ? sessionAccumulated + " " + text : text;
+    debugLog("engine:onresult", {
+      resultIndex: event.resultIndex,
+      slotCount: results.length,
+      lastIsFinal: last.isFinal,
+      text,
+      sessionAccumulated,
+      full,
+      allSlots: Array.from({ length: results.length }, (_, i) => ({
+        isFinal: results[i].isFinal,
+        transcript: results[i][0].transcript,
+      })),
+    });
     if (last.isFinal) {
       currentSessionFinal = text;
       options.onFinal(full);
@@ -87,13 +103,24 @@ export function createSpeechEngine(options: SpeechEngineOptions): SpeechEngine {
   }
   function handleEnd() {
     recognition = null;
+    debugLog("engine:onend", {
+      stopping,
+      cancelling,
+      collecting,
+      currentSessionFinal,
+      sessionAccumulated,
+      fatalError,
+      destroyed,
+    });
     if (stopping || cancelling) {
       // Deliberate end — discard any uncommitted session state and resume warming
+      const wasStopping = stopping;
       stopping = false;
       cancelling = false;
       collecting = false;
       sessionAccumulated = "";
       currentSessionFinal = "";
+      if (wasStopping) options.onStopped?.();
     } else {
       // Silence timeout mid-collection — commit current session text so the
       // next session continues from the right baseline

@@ -20,13 +20,17 @@
     role="status"
     aria-live="polite"
   >
-    <span class="text-sm">{toast.message} —</span>
-    <button
-      type="button"
-      class="text-sm font-semibold uppercase tracking-wider underline underline-offset-2"
-      onclick={undo}
-    >
-      Undo
-    </button>
+    {#if toast.undoEntry}
+      <span class="text-sm">{toast.message} —</span>
+      <button
+        type="button"
+        class="text-sm font-semibold uppercase tracking-wider underline underline-offset-2"
+        onclick={undo}
+      >
+        Undo
+      </button>
+    {:else}
+      <span class="text-sm">{toast.message}</span>
+    {/if}
   </div>
 {/if}

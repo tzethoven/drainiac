@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Trash2, Check } from "@lucide/svelte";
+  import { Trash2, Check, AlertTriangle } from "@lucide/svelte";
   import type { Entry } from "$lib/stores/entries-store.svelte";
   import { getEntriesContext } from "$lib/stores/entries-store.svelte";
   import { getToastContext } from "$lib/stores/toast-store.svelte";
@@ -211,6 +211,13 @@
     <span
       class="shrink-0 text-xs uppercase tracking-[0.05em] py-[0.125rem] px-2 rounded-sm bg-muted text-muted-foreground badge-{entry.category}"
     >{entry.category}</span>
+    {#if entry.warning === "partial-transcription"}
+      <AlertTriangle
+        size={16}
+        class="shrink-0 mt-[3px] text-amber-500"
+        aria-label="Partial transcription"
+      />
+    {/if}
     <span
       class="flex-auto text-base leading-[1.6] text-foreground break-words"
       class:line-through={entry.done}

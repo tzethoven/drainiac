@@ -12,6 +12,7 @@ export interface Entry {
   createdAt: number;
   updatedAt: number;
   processedAt?: number;
+  warning?: "partial-transcription";
 }
 
 export interface AddInput {
@@ -19,6 +20,7 @@ export interface AddInput {
   displayText: string;
   rawTranscript: string;
   source?: "voice" | "text";
+  warning?: "partial-transcription";
 }
 
 export interface EntriesStoreOptions {
@@ -68,6 +70,7 @@ export function createEntriesStore(
       done: false,
       createdAt: ts,
       updatedAt: ts,
+      ...(input.warning ? { warning: input.warning } : {}),
     };
     entries = [entry, ...entries];
     persist();
