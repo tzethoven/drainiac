@@ -17,7 +17,7 @@
  * and an injected scheduler.
  */
 
-import type { SpeechErrorCode } from "$lib/utils/speech-controller.svelte";
+import type { SpeechErrorCode } from "$lib/utils/speech-controller";
 import type { ParsedEntry } from "$lib/utils/transcript-parser";
 import { parse } from "$lib/utils/transcript-parser";
 import {

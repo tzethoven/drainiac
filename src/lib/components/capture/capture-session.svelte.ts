@@ -16,7 +16,7 @@
  * rendering only; it calls into this adapter for everything else.
  */
 
-import type { SpeechController } from "$lib/utils/speech-controller.svelte";
+import type { SpeechController } from "$lib/utils/speech-controller";
 import type { EntriesStore } from "$lib/stores/entries-store.svelte";
 import type { ToastStore } from "$lib/stores/toast-store.svelte";
 import { debugLog } from "$lib/utils/debug-log";
@@ -128,34 +128,28 @@ export function createCaptureSession(
 
   // --- controller subscription ------------------------------------------
   //
-  // Translates the controller's reactive state into session events. We
-  // only care about *transitions* (denied / errored) and transcript
-  // content; no-op repeat values are filtered so we don't thrash the
-  // reducer.
+  // The controller exposes an event stream; we pipe each event directly
+  // into the reducer. The reducer no-ops events that arrive outside the
+  // phases that care about them (e.g. `speechTranscriptChanged` outside
+  // `recording`), so no guarding is needed here.
+  //
+  // Subscribing inside `$effect` auto-unsubscribes on component teardown.
 
-  let lastTranscript = "";
-  let lastControllerState = controller.state;
-
-  $effect(() => {
-    const transcript = (controller.finalText + controller.interimText).trim();
-    if (transcript !== lastTranscript) {
-      lastTranscript = transcript;
-      if (state.phase === "recording") {
-        dispatch({ type: "speechTranscriptChanged", text: transcript });
+  $effect(() =>
+    controller.subscribe((event) => {
+      switch (event.type) {
+        case "transcript":
+          dispatch({ type: "speechTranscriptChanged", text: event.text });
+          return;
+        case "error":
+          dispatch({ type: "speechErrored", code: event.code });
+          return;
+        case "permission-denied":
+          dispatch({ type: "speechDenied" });
+          return;
       }
-    }
-  });
-
-  $effect(() => {
-    const s = controller.state;
-    if (s === lastControllerState) return;
-    lastControllerState = s;
-    if (s === "permission-denied") {
-      dispatch({ type: "speechDenied" });
-    } else if (s === "error" && controller.error) {
-      dispatch({ type: "speechErrored", code: controller.error });
-    }
-  });
+    }),
+  );
 
   // --- public surface ---------------------------------------------------
 

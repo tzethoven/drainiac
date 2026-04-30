@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { createSpeechController } from "$lib/utils/speech-controller.svelte";
+    import { createSpeechController } from "$lib/utils/speech-controller";
     import { getEntriesContext } from "$lib/stores/entries-store.svelte";
     import { getToastContext } from "$lib/stores/toast-store.svelte";
     import { createCaptureSession } from "./capture-session.svelte";
@@ -21,11 +21,7 @@
 
     function beginHold(event: PointerEvent) {
         if (activePointerId !== null) return;
-        if (
-            controller.state === "unsupported" ||
-            session.phase === "denied"
-        )
-            return;
+        if (!controller.isSupported || session.phase === "denied") return;
         event.preventDefault();
         activePointerId = event.pointerId;
         pointerStartY = event.clientY;
@@ -64,7 +60,7 @@
     const isFinalVisible = $derived(session.phase === "saved-visible");
 </script>
 
-{#if controller.state === "unsupported"}
+{#if !controller.isSupported}
     <div class="h-full flex flex-col justify-center items-center px-6 text-center gap-3">
         <h2 class="text-lg font-semibold text-foreground">
             Speech recognition isn't supported here

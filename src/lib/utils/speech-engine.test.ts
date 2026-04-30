@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { createSpeechEngine } from "./speech-engine";
 import { createFakeRecognition } from "./speech-controller.fake";
 
+
 describe("speech-engine", () => {
   it("starts recognition immediately on creation (pre-warm)", () => {
     const fake = createFakeRecognition();

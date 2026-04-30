@@ -1,4 +1,4 @@
-import type { SpeechErrorCode } from "$lib/utils/speech-controller.svelte";
+import type { SpeechErrorCode } from "$lib/utils/speech-controller";
 
 /** All reasons a recording session can terminate. Drives `capturePolicy`. */
 export type CaptureEndReason =
