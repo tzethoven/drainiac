@@ -49,7 +49,7 @@ export function createEntriesStore(
   const now = options.now ?? Date.now;
   const idFactory = options.idFactory ?? (() => crypto.randomUUID());
   const storage = options.storage;
-  const storageKey = options.storageKey ?? "drainiac:entries";
+  const storageKey = options.storageKey ?? "memento:entries";
 
   let entries = $state<Entry[]>(loadInitial(storage, storageKey));
 
@@ -135,7 +135,7 @@ function loadInitial(storage: Storage | undefined, key: string): Entry[] {
   }
 }
 
-const ENTRIES_CONTEXT_KEY = Symbol("drainiac:entries-store");
+const ENTRIES_CONTEXT_KEY = Symbol("memento:entries-store");
 
 export function setEntriesContext(store: EntriesStore): EntriesStore {
   setContext(ENTRIES_CONTEXT_KEY, store);

@@ -1,4 +1,4 @@
-# PRD — Drainiac v1 MVP: Voice Capture → Inbox
+# PRD — Memento v1 MVP: Voice Capture → Inbox
 
 ## Problem Statement
 
@@ -63,7 +63,7 @@ A phone-first PWA whose single job in v1 is to make capture faster than the thou
 
 1. **transcript-parser** — pure module that takes a raw transcript string and returns `{ category, displayText, rawTranscript }`. Owns the alias map (canonical: `todo`, `note`, `idea`; aliases include `to do`, `to-do`, `task`, `notes`, `ideas`, `id`). Responsible for case-insensitive matching, leading-punctuation tolerance, trigger-word stripping, and the five deterministic cleaning rules (trim, capitalise first letter, ensure terminal period, collapse whitespace — trigger strip is the fifth). Default-to-Note policy lives here. The contract is a single `parse()` function; the alias map is configuration that can grow (for Phase 2's `read`/`watch`/`habit`) without touching the call site.
 
-2. **entries-store** — rune-based reactive store that hides the persistence backend. Operations: add, update, remove, clear-done, plus reactive read accessors for full list and category-filtered lists. v1 serialises the entire entry array as JSON under localStorage key `drainiac:entries`; Phase 2's SQLite/Drizzle swap changes the internal implementation without changing the interface. Soft-delete is not supported in v1 — delete is immediate, with in-memory undo handled at the UI layer via a 5-second toast that re-adds the entry if dismissed.
+2. **entries-store** — rune-based reactive store that hides the persistence backend. Operations: add, update, remove, clear-done, plus reactive read accessors for full list and category-filtered lists. v1 serialises the entire entry array as JSON under localStorage key `memento:entries`; Phase 2's SQLite/Drizzle swap changes the internal implementation without changing the interface. Soft-delete is not supported in v1 — delete is immediate, with in-memory undo handled at the UI layer via a 5-second toast that re-adds the entry if dismissed.
 
 3. **speech-controller** — wraps `window.SpeechRecognition` / `webkitSpeechRecognition` into a reactive Svelte-5-friendly controller. Exposes `start()`, `stop()`, `cancel()` methods and reactive `{ state, interimText, finalText, error }`. Normalises the messy cross-browser error taxonomy into a small set: `not-supported`, `permission-denied`, `no-speech`, `network`, `aborted`, `audio-capture`, `unknown`. Implements the seven failure-case policy from the design discussion (empty-transcript drop, partial-on-error save, network-error toast, etc.) — the component layer consumes the controller's state and maps it to UI/toast calls.
 

@@ -179,7 +179,7 @@
             Speech recognition isn't supported here
         </h2>
         <p class="text-sm text-muted-foreground leading-[1.6] max-w-sm">
-            Drainiac needs the Web Speech API. Try one of these browsers:
+            Memento needs the Web Speech API. Try one of these browsers:
         </p>
         <ul class="text-sm text-muted-foreground leading-[1.8] list-disc list-inside">
             <li>Chrome on Android</li>
@@ -193,7 +193,7 @@
             Microphone access is blocked
         </h2>
         <p class="text-sm text-muted-foreground leading-[1.6] max-w-sm">
-            Drainiac can't record without microphone permission. Re-enable it in your browser settings, then reload the page.
+            Memento can't record without microphone permission. Re-enable it in your browser settings, then reload the page.
         </p>
         <div class="text-sm text-muted-foreground leading-[1.6] max-w-sm text-left space-y-3">
             <div>

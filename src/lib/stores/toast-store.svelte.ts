@@ -41,7 +41,7 @@ export function createToastStore(): ToastStore {
   };
 }
 
-const TOAST_CONTEXT_KEY = Symbol("drainiac:toast-store");
+const TOAST_CONTEXT_KEY = Symbol("memento:toast-store");
 
 export function setToastContext(store: ToastStore): ToastStore {
   setContext(TOAST_CONTEXT_KEY, store);

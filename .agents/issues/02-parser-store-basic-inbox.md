@@ -11,7 +11,7 @@ Turn raw transcripts into routed, cleaned, persisted entries and show them as a 
 Three modules and one minimal UI surface:
 
 1. **`transcript-parser`** — pure `parse(raw)` returning `{ category, displayText, rawTranscript }`. Owns the alias map (canonical `todo`/`note`/`idea`; aliases `to do`, `to-do`, `task`, `notes`, `ideas`, `id`). Implements case-insensitive matching, leading-punctuation tolerance, two-word trigger handling, trigger stripping, cleaning rules (trim, capitalise first letter, terminal period, collapse whitespace), and default-to-note on no-match.
-2. **`entries-store`** — rune-based reactive store backed by localStorage key `drainiac:entries`. Operations: `add`, `update`, `remove`, `clearDone`, plus reactive accessors for the full list and category-filtered views. All schema fields written on add.
+2. **`entries-store`** — rune-based reactive store backed by localStorage key `memento:entries`. Operations: `add`, `update`, `remove`, `clearDone`, plus reactive accessors for the full list and category-filtered views. All schema fields written on add.
 3. **Wiring** — on release, `CapturePane` calls parser → store.add.
 4. **Basic inbox list** — render entries below the capture pane (ungrouped, newest-first) with a category badge and `displayText`. No grouping, filtering, gestures, or scroll-snap yet.
 

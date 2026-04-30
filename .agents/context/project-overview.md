@@ -1,8 +1,8 @@
-# Drainiac — Project Overview
+# Memento — Project Overview
 
 ## Overview
 
-**Drainiac** = personal productivity PWA. Core philosophy: **capture fast, process later** — frictionless way offload thoughts throughout day, return to them in structured, motivating environment.
+**Memento** = personal productivity PWA. Core philosophy: **capture fast, process later** — frictionless way offload thoughts throughout day, return to them in structured, motivating environment.
 
 Alternative names: "AfterThought", "Memento", "Souvenir"
 
@@ -12,7 +12,7 @@ Goal: **relieve mental load** & **optimise focus**. Takes away pressure of thoug
 
 ## Full Product Vision
 
-Sections below describe complete product Drainiac will become. Phase 1 = first step toward this vision.
+Sections below describe complete product Memento will become. Phase 1 = first step toward this vision.
 
 ### Voice-First Capture
 
@@ -34,7 +34,7 @@ When no code word used, AI infers intent from context, asks confirmation before 
 
 ### Content Consumption Use Case
 
-A key scenario Drainiac is designed to support: **consuming a piece of content** (a book chapter, podcast episode, film, article, lecture, etc.) and wanting to capture findings, reactions, or ideas triggered by that content — without breaking focus.
+A key scenario Memento is designed to support: **consuming a piece of content** (a book chapter, podcast episode, film, article, lecture, etc.) and wanting to capture findings, reactions, or ideas triggered by that content — without breaking focus.
 
 **User scenario example:**
 > User is reading chapter 3 of a book. A concept sparks an idea. They hold the record button and say: *"Idea — habit stacking can apply to my morning routine"*. The capture is instant, frictionless, and linked to no particular source. Later, during end-of-day processing, they can review and connect that idea back to the content that inspired it.
@@ -42,7 +42,7 @@ A key scenario Drainiac is designed to support: **consuming a piece of content**
 **Why this matters:**
 - Consuming content is a primary moment when new ideas and todos surface
 - Interrupting consumption to write notes in another tool breaks focus
-- Drainiac acts as the "capture inbox" while the user stays in the flow of the content
+- Memento acts as the "capture inbox" while the user stays in the flow of the content
 
 **How it fits the existing system:**
 - Voice capture with code words (`Idea`, `Note`, `Todo`) is already the right tool for this scenario

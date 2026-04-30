@@ -1,6 +1,6 @@
-# Drainiac
+# Memento
 
-**Drainiac** = personal productivity PWA. Core philosophy: **capture fast, process later** — frictionless thought offload during day, structured review later.
+**Memento** = personal productivity PWA. Core philosophy: **capture fast, process later** — frictionless thought offload during day, structured review later.
 
 ## Context Files
 
