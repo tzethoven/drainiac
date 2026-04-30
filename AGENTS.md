@@ -6,6 +6,8 @@
 
 Read for full project context:
 
+- CONTEXT.md — domain glossary & invariants (authoritative for naming)
+- docs/adr/ — architectural decision records
 - .agents/context/project-overview.md
 - .agents/rules/code-standards.md
 
