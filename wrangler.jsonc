@@ -11,4 +11,12 @@
   "observability": {
     "enabled": true,
   },
+  "d1_databases": [
+    {
+      "binding": "AUTH_DB",
+      "database_name": "memento-auth",
+      "database_id": "579cb7c7-8396-4617-a2ec-d7e6fac7fa84",
+      "migrations_dir": "migrations",
+    },
+  ],
 }

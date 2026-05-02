@@ -12,9 +12,13 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate:local": "wrangler d1 migrations apply AUTH_DB --local",
+    "db:migrate:remote": "wrangler d1 migrations apply AUTH_DB --remote"
   },
   "devDependencies": {
+    "@better-auth/cli": "^1.4.21",
     "@fontsource-variable/geist": "^5.2.8",
     "@fontsource-variable/noto-sans": "^5.2.10",
     "@lucide/svelte": "^1.0.1",
@@ -27,6 +31,7 @@
     "clsx": "^2.1.1",
     "concurrently": "^9.2.1",
     "dotenv-cli": "^11.0.0",
+    "drizzle-kit": "^0.31.10",
     "jsdom": "^29.0.2",
     "svelte": "^5.51.0",
     "svelte-check": "^4.4.2",
@@ -39,6 +44,8 @@
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.2.2",
+    "better-auth": "^1.6.9",
+    "drizzle-orm": "^0.45.2",
     "lightningcss": "^1.32.0",
     "tailwindcss": "^4.2.2"
   }
