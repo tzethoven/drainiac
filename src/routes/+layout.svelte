@@ -11,14 +11,15 @@
 
 	let { children } = $props();
 
+	const toast = setToastContext(createToastStore());
+
 	// Only construct in the browser — localStorage is unavailable during SSR.
 	setEntriesContext(
 		createEntriesStore({
 			storage: browser ? localStorage : undefined,
+			onPolishError: () => toast.show("Couldn't polish — try again."),
 		}),
 	);
-
-	const toast = setToastContext(createToastStore());
 
 	/**
 	 * Surface OAuth outcomes (success / rejection) via the shared toast

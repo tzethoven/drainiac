@@ -17,9 +17,12 @@
     function openEdit(entry: Entry) {
         sheet = { kind: "edit", entry };
     }
-    // Long-press is a no-op in slice #1 (foundation rewire). Slice #2
-    // reattaches it to trigger "Polish with AI" via entriesStore.polish().
-    function onLongPress(_entry: Entry) {}
+    // Long-press triggers AI polish. The store no-ops if the entry is
+    // already polishing or already polished; EntryRow also short-
+    // circuits to avoid the haptic/pulse in those cases.
+    function onLongPress(entry: Entry) {
+        void store.polish(entry.id);
+    }
     function closeSheet() {
         sheet = { kind: "none" };
     }

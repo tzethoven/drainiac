@@ -1,6 +1,14 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { createEntriesStore } from "./entries-store.svelte";
 import { createFakeStorage } from "./fake-storage";
+
+function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+    ...init,
+  });
+}
 
 function makeDeps() {
   let nowValue = 1_000;
@@ -387,6 +395,253 @@ describe("entries-store", () => {
       const persisted = JSON.parse(deps.storage.getItem("memento:entries")!);
       expect(persisted).toHaveLength(1);
       expect(persisted[0].id).toBe("good");
+    });
+  });
+
+  describe("polish()", () => {
+    it("happy path: writes the four polish fields", async () => {
+      const deps = makeDeps();
+      deps.setNow(1_000);
+      const fetchImpl = vi.fn(
+        async (_url: string | URL | Request, _init?: RequestInit) =>
+          jsonResponse({
+            ok: true,
+            polishedText: "Buy milk.",
+            model: "test-model",
+            promptVersion: 1,
+          }),
+      );
+      const store = createEntriesStore({
+        ...deps,
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+      });
+      const entry = store.add({
+        category: "todo",
+        displayText: "buy milk",
+        rawTranscript: "todo buy milk",
+      });
+
+      deps.setNow(2_000);
+      await store.polish(entry.id);
+
+      const after = store.entries[0];
+      expect(after.polishedText).toBe("Buy milk.");
+      expect(after.polishedAt).toBe(2_000);
+      expect(after.polishedModel).toBe("test-model");
+      expect(after.polishedPromptVersion).toBe(1);
+      expect(store.isPolishing(entry.id)).toBe(false);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchImpl.mock.calls[0] as [
+        string,
+        RequestInit,
+      ];
+      expect(url).toBe("/api/polish");
+      const body = JSON.parse(String(init.body));
+      expect(body).toEqual({
+        rawTranscript: "todo buy milk",
+        category: "todo",
+      });
+    });
+
+    it("isPolishing(id) is true while the request is in flight", async () => {
+      const deps = makeDeps();
+      let resolve!: (r: Response) => void;
+      const fetchImpl = vi.fn(
+        () => new Promise<Response>((r) => (resolve = r)),
+      );
+      const store = createEntriesStore({
+        ...deps,
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+      });
+      const entry = store.add({
+        category: "todo",
+        displayText: "x",
+        rawTranscript: "todo x",
+      });
+
+      const promise = store.polish(entry.id);
+      expect(store.isPolishing(entry.id)).toBe(true);
+
+      resolve(
+        jsonResponse({
+          ok: true,
+          polishedText: "X.",
+          model: "m",
+          promptVersion: 1,
+        }),
+      );
+      await promise;
+      expect(store.isPolishing(entry.id)).toBe(false);
+    });
+
+    it("is a no-op when already polishing", async () => {
+      const deps = makeDeps();
+      let resolve!: (r: Response) => void;
+      const fetchImpl = vi.fn(
+        () => new Promise<Response>((r) => (resolve = r)),
+      );
+      const store = createEntriesStore({
+        ...deps,
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+      });
+      const entry = store.add({
+        category: "todo",
+        displayText: "x",
+        rawTranscript: "todo x",
+      });
+
+      const first = store.polish(entry.id);
+      await store.polish(entry.id); // second call no-ops immediately
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+      resolve(
+        jsonResponse({
+          ok: true,
+          polishedText: "X.",
+          model: "m",
+          promptVersion: 1,
+        }),
+      );
+      await first;
+    });
+
+    it("is a no-op when the entry already has polishedText", async () => {
+      const deps = makeDeps();
+      const fetchImpl = vi.fn(async () =>
+        jsonResponse({
+          ok: true,
+          polishedText: "First.",
+          model: "m",
+          promptVersion: 1,
+        }),
+      );
+      const store = createEntriesStore({
+        ...deps,
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+      });
+      const entry = store.add({
+        category: "todo",
+        displayText: "x",
+        rawTranscript: "todo x",
+      });
+
+      await store.polish(entry.id);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      await store.polish(entry.id); // second call no-ops — already polished
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+    });
+
+    it("edit-during-flight discards the eventual response", async () => {
+      const deps = makeDeps();
+      let resolve!: (r: Response) => void;
+      const fetchImpl = vi.fn(
+        () => new Promise<Response>((r) => (resolve = r)),
+      );
+      const store = createEntriesStore({
+        ...deps,
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+      });
+      const entry = store.add({
+        category: "todo",
+        displayText: "x",
+        rawTranscript: "todo x",
+      });
+
+      const promise = store.polish(entry.id);
+      store.update(entry.id, { displayText: "edited" });
+      expect(store.isPolishing(entry.id)).toBe(false);
+
+      resolve(
+        jsonResponse({
+          ok: true,
+          polishedText: "Should be discarded.",
+          model: "m",
+          promptVersion: 1,
+        }),
+      );
+      await promise;
+
+      expect(store.entries[0].polishedText).toBeNull();
+      expect(store.entries[0].displayText).toBe("edited");
+    });
+
+    it("delete-during-flight discards the eventual response", async () => {
+      const deps = makeDeps();
+      let resolve!: (r: Response) => void;
+      const fetchImpl = vi.fn(
+        () => new Promise<Response>((r) => (resolve = r)),
+      );
+      const store = createEntriesStore({
+        ...deps,
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+      });
+      const entry = store.add({
+        category: "todo",
+        displayText: "x",
+        rawTranscript: "todo x",
+      });
+
+      const promise = store.polish(entry.id);
+      store.remove(entry.id);
+
+      resolve(
+        jsonResponse({
+          ok: true,
+          polishedText: "Should be discarded.",
+          model: "m",
+          promptVersion: 1,
+        }),
+      );
+      await promise;
+
+      expect(store.entries).toHaveLength(0);
+    });
+
+    it("calls onPolishError and leaves the entry unchanged on network failure", async () => {
+      const deps = makeDeps();
+      const fetchImpl = vi.fn(async () => {
+        throw new Error("boom");
+      });
+      const onPolishError = vi.fn();
+      const store = createEntriesStore({
+        ...deps,
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        onPolishError,
+      });
+      const entry = store.add({
+        category: "todo",
+        displayText: "x",
+        rawTranscript: "todo x",
+      });
+
+      await store.polish(entry.id);
+
+      expect(onPolishError).toHaveBeenCalledTimes(1);
+      expect(store.isPolishing(entry.id)).toBe(false);
+      expect(store.entries[0].polishedText).toBeNull();
+    });
+
+    it("calls onPolishError when response.ok is false", async () => {
+      const deps = makeDeps();
+      const fetchImpl = vi.fn(async () =>
+        jsonResponse({ ok: false, reason: "upstream" }),
+      );
+      const onPolishError = vi.fn();
+      const store = createEntriesStore({
+        ...deps,
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        onPolishError,
+      });
+      const entry = store.add({
+        category: "todo",
+        displayText: "x",
+        rawTranscript: "todo x",
+      });
+
+      await store.polish(entry.id);
+
+      expect(onPolishError).toHaveBeenCalledTimes(1);
+      expect(store.entries[0].polishedText).toBeNull();
     });
   });
 

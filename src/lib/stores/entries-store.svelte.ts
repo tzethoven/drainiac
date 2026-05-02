@@ -37,6 +37,16 @@ export interface EntriesStoreOptions {
   now?: () => number;
   idFactory?: () => string;
   storageKey?: string;
+  /** Override for tests. Defaults to global `fetch`. */
+  fetchImpl?: typeof fetch;
+  /**
+   * Optional hook called when the polish request fails (network error
+   * or non-`ok: true` response). Lets the adapter wire a toast without
+   * coupling the store to the toast store directly. Not called when
+   * the request is discarded because the entry was edited or removed
+   * while in flight.
+   */
+  onPolishError?: () => void;
 }
 
 export interface EntriesStore {
@@ -50,6 +60,17 @@ export interface EntriesStore {
   remove(id: string): void;
   restore(entry: Entry): void;
   clearDone(): void;
+  /**
+   * Trigger an AI polish for the given entry. No-op if the entry is
+   * already polishing or already has `polishedText`. On success the
+   * four polish fields are applied via the normal update path; on
+   * failure `onPolishError` is called and the entry is left unchanged.
+   * If `update(id, …)` or `remove(id)` is called while the request is
+   * in flight, the eventual response is discarded silently.
+   */
+  polish(id: string): Promise<void>;
+  /** Reactive: true iff a polish request is in flight for `id`. */
+  isPolishing(id: string): boolean;
 }
 
 export function createEntriesStore(
@@ -60,8 +81,17 @@ export function createEntriesStore(
   const storage = options.storage;
   const storageKey = options.storageKey ?? "memento:entries";
 
+  const fetchImpl = options.fetchImpl ?? ((...args) => fetch(...args));
+  const onPolishError = options.onPolishError;
+
   const loaded = loadInitial(storage, storageKey);
   let entries = $state<Entry[]>(loaded.entries);
+
+  // Set of entry ids with an in-flight polish request. Membership
+  // doubles as the conflict detector: `update` and `remove` both call
+  // `polishingIds.delete(id)` unconditionally, which causes any
+  // in-flight response to be discarded when it returns.
+  const polishingIds = $state(new Set<string>());
 
   function persist() {
     if (!storage) return;
@@ -101,6 +131,8 @@ export function createEntriesStore(
   ): void {
     const idx = entries.findIndex((e) => e.id === id);
     if (idx === -1) return;
+    // User-initiated change invalidates any in-flight polish.
+    polishingIds.delete(id);
     const current = entries[idx];
     const next: Entry = { ...current, ...patch, updatedAt: now() };
     entries = [...entries.slice(0, idx), next, ...entries.slice(idx + 1)];
@@ -110,8 +142,103 @@ export function createEntriesStore(
   function remove(id: string): void {
     const next = entries.filter((e) => e.id !== id);
     if (next.length === entries.length) return;
+    polishingIds.delete(id);
     entries = next;
     persist();
+  }
+
+  function applyPolishResult(
+    id: string,
+    polishedText: string,
+    model: string,
+    promptVersion: number,
+  ): void {
+    const idx = entries.findIndex((e) => e.id === id);
+    if (idx === -1) return;
+    const current = entries[idx];
+    const next: Entry = {
+      ...current,
+      polishedText,
+      polishedAt: now(),
+      polishedModel: model,
+      polishedPromptVersion: promptVersion,
+      updatedAt: now(),
+    };
+    entries = [...entries.slice(0, idx), next, ...entries.slice(idx + 1)];
+    persist();
+  }
+
+  async function polish(id: string): Promise<void> {
+    if (polishingIds.has(id)) return;
+    const entry = entries.find((e) => e.id === id);
+    if (!entry) return;
+    if (entry.polishedText != null) return;
+
+    polishingIds.add(id);
+    const { rawTranscript, category } = entry;
+
+    let response: Response;
+    try {
+      response = await fetchImpl("/api/polish", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ rawTranscript, category }),
+      });
+    } catch {
+      if (polishingIds.delete(id)) onPolishError?.();
+      return;
+    }
+
+    // Entry was edited or deleted while the request was in flight:
+    // discard the response silently.
+    if (!polishingIds.has(id)) return;
+
+    if (!response.ok) {
+      polishingIds.delete(id);
+      onPolishError?.();
+      return;
+    }
+
+    let payload: unknown;
+    try {
+      payload = await response.json();
+    } catch {
+      if (polishingIds.delete(id)) onPolishError?.();
+      return;
+    }
+
+    // Re-check: the response parse is async too.
+    if (!polishingIds.has(id)) return;
+
+    const ok =
+      payload && typeof payload === "object" && (payload as { ok?: unknown }).ok === true;
+    if (!ok) {
+      polishingIds.delete(id);
+      onPolishError?.();
+      return;
+    }
+
+    const { polishedText, model, promptVersion } = payload as {
+      polishedText: unknown;
+      model: unknown;
+      promptVersion: unknown;
+    };
+    if (
+      typeof polishedText !== "string" ||
+      typeof model !== "string" ||
+      typeof promptVersion !== "number"
+    ) {
+      polishingIds.delete(id);
+      onPolishError?.();
+      return;
+    }
+
+    applyPolishResult(id, polishedText, model, promptVersion);
+    polishingIds.delete(id);
+  }
+
+  function isPolishing(id: string): boolean {
+    return polishingIds.has(id);
   }
 
   function restore(entry: Entry): void {
@@ -138,6 +265,8 @@ export function createEntriesStore(
     remove,
     restore,
     clearDone,
+    polish,
+    isPolishing,
   };
 }
 

@@ -11,6 +11,23 @@
   "observability": {
     "enabled": true,
   },
+  "vars": {
+    // Non-secret env vars. Committed to git and authoritative on each
+    // deploy — any value set via the Cloudflare dashboard for a name
+    // listed here will be overwritten by `wrangler deploy`. Keep
+    // secrets out of this block; use `wrangler secret put NAME` for
+    // those (secrets persist across deploys and are never touched by
+    // `wrangler deploy`).
+    //
+    // Required secrets (set once per environment, then forget):
+    //   wrangler secret put BETTER_AUTH_SECRET
+    //   wrangler secret put GOOGLE_CLIENT_SECRET
+    //   wrangler secret put GEMINI_API_KEY
+    "ORIGIN": "memento.tzethoven.worker.dev",
+    "EMAIL_ALLOWLIST": "tzethoven@gmail.com",
+    "GOOGLE_CLIENT_ID": "170024644447-7nvd1k02lpk0bdh96i55gmno21e4kcku.apps.googleusercontent.com",
+    "GEMINI_MODEL": "gemini-3.1-flash-lite-preview",
+  },
   "d1_databases": [
     {
       "binding": "AUTH_DB",
