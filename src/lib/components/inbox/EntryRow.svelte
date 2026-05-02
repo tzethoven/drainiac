@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { Trash2, Check, AlertTriangle } from "@lucide/svelte";
+  import { Trash2, Check, AlertTriangle, Sparkles } from "@lucide/svelte";
   import type { Entry } from "$lib/stores/entries-store.svelte";
   import { getEntriesContext } from "$lib/stores/entries-store.svelte";
   import { getToastContext } from "$lib/stores/toast-store.svelte";
+  import { effectiveText } from "$lib/utils/effective-text";
   import { createGestureState } from "./gesture-state";
 
   interface Props {
@@ -21,7 +22,6 @@
   type Phase = "idle" | "dragging" | "rebounding" | "flying";
   let phase = $state<Phase>("idle");
   let translateX = $state(0);
-  let pulsing = $state(false);
 
   let activeDirection = $state<"left" | "right" | "none">("none");
 
@@ -45,13 +45,17 @@
   function handleLongPress() {
     activeDirection = "none";
     translateX = 0;
-    // Haptic (no-op on iOS Safari).
-    if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
-      navigator.vibrate(10);
+    // No-op if the entry is already polishing or already polished.
+    if (store.isPolishing(entry.id) || entry.polishedText != null) return;
+    // Haptic + visual pulse fire at gesture start, now that the gesture
+    // does something worth confirming.
+    triggerPulse();
+    if (
+      typeof navigator !== "undefined" &&
+      typeof navigator.vibrate === "function"
+    ) {
+      navigator.vibrate(15);
     }
-    // Visual pulse.
-    pulsing = true;
-    setTimeout(() => { pulsing = false; }, 120);
     onLongPress(entry);
   }
 
@@ -162,14 +166,18 @@
     }, 200);
   }
 
+  let pulse = $state(false);
+  function triggerPulse() {
+    pulse = true;
+    setTimeout(() => (pulse = false), 180);
+  }
+
   const contentTransition = $derived(
     phase === "rebounding"
       ? "transform 300ms cubic-bezier(0, 0, 0.2, 1)"
       : phase === "flying"
         ? "transform 200ms ease-in"
-        : pulsing
-          ? "transform 120ms ease-out"
-          : "none",
+        : "none",
   );
 </script>
 
@@ -199,8 +207,11 @@
   <div
     role="button"
     tabindex="0"
+    aria-label="Entry: long-press to polish, tap to edit."
     class="relative z-20 flex items-start gap-2 py-2 px-4 rounded-md bg-card border border-border touch-pan-y select-none"
-    style:transform={`translateX(${translateX}px) scale(${pulsing ? 0.98 : 1})`}
+    class:ring-2={pulse}
+    class:ring-primary={pulse}
+    style:transform={`translateX(${translateX}px)`}
     style:transition={contentTransition}
     onpointerdown={onPointerDown}
     onpointermove={onPointerMove}
@@ -222,6 +233,19 @@
       class="flex-auto text-base leading-[1.6] text-foreground break-words"
       class:line-through={entry.done}
       class:opacity-60={entry.done}
-    >{entry.displayText}</span>
+    >{effectiveText(entry)}</span>
+    {#if store.isPolishing(entry.id)}
+      <Sparkles
+        size={16}
+        class="shrink-0 mt-[3px] text-primary animate-pulse"
+        aria-label="Polishing"
+      />
+    {:else if entry.polishedText != null}
+      <Sparkles
+        size={16}
+        class="shrink-0 mt-[3px] text-primary"
+        aria-label="Polished"
+      />
+    {/if}
   </div>
 </li>

@@ -5,7 +5,7 @@ import type { Entry } from "./entries-store.svelte";
 function makeEntry(): Entry {
   return {
     id: "e1",
-    schemaVersion: 1,
+    schemaVersion: 2,
     category: "todo",
     displayText: "Buy milk.",
     rawTranscript: "todo buy milk",
@@ -13,6 +13,10 @@ function makeEntry(): Entry {
     done: false,
     createdAt: 1_000,
     updatedAt: 1_000,
+    polishedText: null,
+    polishedAt: null,
+    polishedModel: null,
+    polishedPromptVersion: null,
   };
 }
 

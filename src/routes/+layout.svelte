@@ -6,19 +6,21 @@
 		setEntriesContext,
 	} from "$lib/stores/entries-store.svelte";
 	import { createToastStore, setToastContext } from "$lib/stores/toast-store.svelte";
+	import { POLISH_FAILURE_MESSAGES } from "$lib/polish/types";
 	import Toast from "$lib/components/Toast.svelte";
 	import '../app.css';
 
 	let { children } = $props();
 
+	const toast = setToastContext(createToastStore());
+
 	// Only construct in the browser — localStorage is unavailable during SSR.
 	setEntriesContext(
 		createEntriesStore({
 			storage: browser ? localStorage : undefined,
+			onPolishError: (reason) => toast.show(POLISH_FAILURE_MESSAGES[reason]),
 		}),
 	);
-
-	const toast = setToastContext(createToastStore());
 
 	/**
 	 * Surface OAuth outcomes (success / rejection) via the shared toast

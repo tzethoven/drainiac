@@ -4,13 +4,11 @@
     import { group } from "$lib/utils/day-grouper";
     import InboxList from "./InboxList.svelte";
     import EditSheet from "./EditSheet.svelte";
-    import MenuSheet from "./MenuSheet.svelte";
 
     type Filter = "all" | Category;
     type SheetState =
         | { kind: "none" }
-        | { kind: "edit"; entry: Entry }
-        | { kind: "menu"; entry: Entry };
+        | { kind: "edit"; entry: Entry };
 
     const store = getEntriesContext();
     let filter = $state<Filter>("all");
@@ -19,8 +17,11 @@
     function openEdit(entry: Entry) {
         sheet = { kind: "edit", entry };
     }
-    function openMenu(entry: Entry) {
-        sheet = { kind: "menu", entry };
+    // Long-press triggers AI polish. The store no-ops if the entry is
+    // already polishing or already polished; EntryRow also short-
+    // circuits to avoid the haptic/pulse in those cases.
+    function onLongPress(entry: Entry) {
+        void store.polish(entry.id);
     }
     function closeSheet() {
         sheet = { kind: "none" };
@@ -76,11 +77,9 @@
         </div>
     </header>
 
-    <InboxList {sections} onTap={openEdit} onLongPress={openMenu} />
+    <InboxList {sections} onTap={openEdit} {onLongPress} />
 </div>
 
 {#if sheet.kind === "edit"}
     <EditSheet entry={sheet.entry} onClose={closeSheet} />
-{:else if sheet.kind === "menu"}
-    <MenuSheet entry={sheet.entry} onClose={closeSheet} />
 {/if}

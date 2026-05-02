@@ -3,7 +3,10 @@
   import BottomSheet from "$lib/components/ui/BottomSheet.svelte";
   import type { Entry } from "$lib/stores/entries-store.svelte";
   import { getEntriesContext } from "$lib/stores/entries-store.svelte";
-  import { normalizeEditText, isBlank } from "$lib/utils/edit-text";
+  import { isBlank } from "$lib/utils/edit-text";
+  import { effectiveText } from "$lib/utils/effective-text";
+  import { computeEditSave, REVERT_POLISH_PATCH } from "$lib/utils/edit-save";
+  import type { Category } from "$lib/utils/transcript-parser";
 
   interface Props {
     entry: Entry;
@@ -14,9 +17,10 @@
 
   const store = getEntriesContext();
 
-  // Seed from the entry once; subsequent edits are driven by the textarea.
-  // A fresh EditSheet is mounted per entry, so initial capture is intentional.
-  let value = $state(untrack(() => entry.displayText));
+  // Seed from the entry once, using effectiveText so polished entries
+  // pre-fill the input with their polished form. A fresh EditSheet is
+  // mounted per entry, so initial capture is intentional.
+  let value = $state(untrack(() => effectiveText(entry)));
 
   let textareaEl = $state<HTMLTextAreaElement | undefined>(undefined);
 
@@ -36,12 +40,34 @@
 
   const blank = $derived(isBlank(value));
 
+  const CATEGORIES: { value: Category; label: string }[] = [
+    { value: "todo", label: "Todo" },
+    { value: "note", label: "Note" },
+    { value: "idea", label: "Idea" },
+  ];
+
+  function chooseCategory(category: Category) {
+    if (category === entry.category) return;
+    store.update(entry.id, { category });
+  }
+
   function save() {
     if (blank) return;
-    const next = normalizeEditText(value);
-    if (next !== entry.displayText) {
-      store.update(entry.id, { displayText: next });
-    }
+    // Three-case logic lives in `computeEditSave` so it can be unit-
+    // tested without a component harness. `null` means "no write" —
+    // critically, this preserves a polished entry when the user opened
+    // the sheet only to re-read.
+    const patch = computeEditSave(value, entry);
+    if (patch) store.update(entry.id, patch);
+    onClose();
+  }
+
+  const canRevert = $derived(entry.polishedText != null);
+
+  function revert() {
+    // Clear the four polish fields in one shot. `displayText` and
+    // `rawTranscript` are untouched — long-press can re-polish.
+    store.update(entry.id, { ...REVERT_POLISH_PATCH });
     onClose();
   }
 </script>
@@ -58,7 +84,40 @@
       class="w-full resize-none rounded-md border border-border bg-background text-foreground text-base leading-[1.6] p-3 focus:outline-none focus:ring-2 focus:ring-ring"
     ></textarea>
 
+    <div
+      class="flex gap-2"
+      role="radiogroup"
+      aria-label="Category"
+    >
+      {#each CATEGORIES as opt (opt.value)}
+        <button
+          type="button"
+          role="radio"
+          aria-checked={entry.category === opt.value}
+          class="text-xs uppercase tracking-[0.05em] px-3 py-1 rounded-sm border badge-{opt.value}"
+          class:bg-foreground={entry.category === opt.value}
+          class:text-background={entry.category === opt.value}
+          class:border-foreground={entry.category === opt.value}
+          class:bg-muted={entry.category !== opt.value}
+          class:text-muted-foreground={entry.category !== opt.value}
+          class:border-border={entry.category !== opt.value}
+          onclick={() => chooseCategory(opt.value)}
+        >
+          {opt.label}
+        </button>
+      {/each}
+    </div>
+
     <div class="flex justify-end gap-2">
+      {#if canRevert}
+        <button
+          type="button"
+          class="px-4 py-2 rounded-md text-sm font-semibold text-muted-foreground hover:text-foreground mr-auto"
+          onclick={revert}
+        >
+          Revert to original
+        </button>
+      {/if}
       <button
         type="button"
         class="px-4 py-2 rounded-md text-sm font-semibold text-muted-foreground hover:text-foreground"
