@@ -15,6 +15,7 @@ const handler: RequestHandler = (event) => {
 		secret: env.BETTER_AUTH_SECRET,
 		googleClientId: env.GOOGLE_CLIENT_ID,
 		googleClientSecret: env.GOOGLE_CLIENT_SECRET,
+		emailAllowlist: env.EMAIL_ALLOWLIST ?? '',
 		baseURL: event.url.origin,
 	});
 	return toSvelteKitHandler(auth)(event);

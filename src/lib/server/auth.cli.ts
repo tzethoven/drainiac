@@ -17,4 +17,5 @@ export const auth = _buildAuthForCLI({} as unknown as D1Database, {
 	secret: 'cli-stub-secret-not-for-runtime-use',
 	googleClientId: 'cli-stub',
 	googleClientSecret: 'cli-stub',
+	emailAllowlist: '',
 });

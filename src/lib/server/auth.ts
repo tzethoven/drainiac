@@ -15,22 +15,27 @@
  * map transparently rebuilds — no correctness issue, just a one-off
  * reconstruction cost.
  */
-import { betterAuth } from 'better-auth';
+import { APIError, betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { drizzle } from 'drizzle-orm/d1';
 
+import { isAllowed, parseAllowlist } from './allowlist';
 import * as schema from './db/schema';
 
 export type AuthSecrets = {
 	secret: string;
 	googleClientId: string;
 	googleClientSecret: string;
+	/** Raw `EMAIL_ALLOWLIST` env value — comma-separated emails,
+	 * case-insensitive. See `allowlist.ts` for the parser. */
+	emailAllowlist: string;
 	/** Origin of the current request. Used by better-auth to build OAuth
 	 * callback URLs. Derive from `event.url.origin` at call sites. */
 	baseURL?: string;
 };
 
 function build(db: D1Database, secrets: AuthSecrets) {
+	const allowlist = parseAllowlist(secrets.emailAllowlist);
 	return betterAuth({
 		database: drizzleAdapter(drizzle(db, { schema }), {
 			provider: 'sqlite',
@@ -55,6 +60,40 @@ function build(db: D1Database, secrets: AuthSecrets) {
 		},
 		advanced: {
 			cookiePrefix: 'better-auth',
+		},
+		databaseHooks: {
+			user: {
+				create: {
+					/**
+					 * Reject non-allowlisted emails at account creation.
+					 *
+					 * This is the first of two allowlist gates (see ADR 0003). The
+					 * second is in `requireUser()` (Slice 4), which re-checks on
+					 * every request so removing an email from the allowlist takes
+					 * effect on the next call without DB cleanup.
+					 *
+					 * Throwing `APIError` here causes better-auth to redirect to
+					 * the configured `onAPIError.errorURL` below (or to the
+					 * per-request `errorCallbackURL` when the client supplies one).
+					 */
+					before: async (user) => {
+						if (!isAllowed(user.email, allowlist)) {
+							throw new APIError('FORBIDDEN', {
+								message: 'not_allowlisted',
+							});
+						}
+					},
+				},
+			},
+		},
+		onAPIError: {
+			// Coarse default: any API error during the OAuth flow lands here.
+			// The allowlist rejection is the dominant case today; other
+			// failures produce the same toast ("sign-in failed") via the
+			// layout's query-param handler (Slice 5). Refining per-error-code
+			// redirects can happen when we have more failure modes to
+			// distinguish.
+			errorURL: '/?auth_error=not_allowlisted',
 		},
 	});
 }
