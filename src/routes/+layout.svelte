@@ -18,7 +18,43 @@
 		}),
 	);
 
-	setToastContext(createToastStore());
+	const toast = setToastContext(createToastStore());
+
+	/**
+	 * Surface OAuth outcomes (success / rejection) via the shared toast
+	 * store. The OAuth callback redirects to `/?auth_error=<reason>` on
+	 * failure or `/?auth=signed_in` on success; we read the param on
+	 * mount and then strip it with `history.replaceState` so a manual
+	 * reload does not re-toast.
+	 *
+	 * Kept in the layout (not +page) because it should fire regardless
+	 * of which route the callback lands on, and because the toast store
+	 * is already provided here.
+	 */
+	$effect(() => {
+		if (!browser) return;
+		const url = new URL(window.location.href);
+		const authError = url.searchParams.get('auth_error');
+		const auth = url.searchParams.get('auth');
+
+		if (authError === 'not_allowlisted') {
+			toast.show('Your email is not on the allowlist.');
+		} else if (authError) {
+			toast.show('Sign-in failed.');
+		} else if (auth === 'signed_in') {
+			toast.show('Signed in.');
+		} else {
+			return;
+		}
+
+		url.searchParams.delete('auth_error');
+		url.searchParams.delete('auth');
+		history.replaceState(
+			history.state,
+			'',
+			url.pathname + (url.search ? url.search : '') + url.hash,
+		);
+	});
 </script>
 
 <svelte:head>
