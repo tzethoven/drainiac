@@ -55,14 +55,40 @@ land; do use the agreed name when they do.
 
 - **Entry** — a captured thought, persisted. Fields: `id`, `schemaVersion`,
   `category`, `displayText`, `rawTranscript`, `source`, `done`,
-  `createdAt`, `updatedAt`, optional `processedAt`, optional `warning`.
-  `schemaVersion` is `1` today; bump it for any breaking shape change and
-  write a migration.
+  `createdAt`, `updatedAt`, optional `processedAt`, optional `warning`,
+  and the polish quartet (`polishedText`, `polishedAt`, `polishedModel`,
+  `polishedPromptVersion`) — all four are `null` when the entry has
+  not been polished (or after a revert). `schemaVersion` is `2` today;
+  bump it for any breaking shape change and write a migration step in
+  `src/lib/stores/entries-migrations.ts`. Migration runs at store
+  load and eagerly persists the upgraded array back to storage.
 
 - **Display Text** — the cleaned, user-facing form of an Entry's body.
   For voice: capitalised + trailing punctuation (see `cleanBody`). For
   text edits: literal after whitespace normalisation (see
   `normalizeEditText`). **These two paths are intentionally different.**
+  User-facing surfaces never read `displayText` directly; they go
+  through `effectiveText(entry)` so polished entries render their
+  polished form instead.
+
+- **Effective Text** — the single read site for "what string do we
+  show the user?" Defined as `entry.polishedText ?? entry.displayText`
+  in `src/lib/utils/effective-text.ts`. Used by inbox rendering, the
+  edit sheet seed value, and any future copy / share / search path.
+  `rawTranscript` is never returned by `effectiveText` — it is the
+  audit trail, not display.
+
+- **Polished Text** — the AI-polished form of an Entry, produced by
+  the "Polish with AI" action (long-press on an inbox row — **planned**;
+  slice #1 lays the schema + UI foundation, slices #2–4 wire the
+  behaviour). `polishedText` is `null` when the entry has not been
+  polished or has been reverted. When set, `effectiveText` returns
+  it in preference to `displayText`. Companion metadata fields
+  (`polishedAt`, `polishedModel`, `polishedPromptVersion`) record
+  when, with which model, and under which prompt version the polish
+  was produced; they are always set together with `polishedText` and
+  cleared together on revert or on an edit that diverges from the
+  polished value.
 
 - **Raw Transcript** — the unmodified input as it arrived (Web Speech
   output, or the user's typed string before normalisation). Preserved

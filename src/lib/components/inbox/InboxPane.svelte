@@ -4,13 +4,11 @@
     import { group } from "$lib/utils/day-grouper";
     import InboxList from "./InboxList.svelte";
     import EditSheet from "./EditSheet.svelte";
-    import MenuSheet from "./MenuSheet.svelte";
 
     type Filter = "all" | Category;
     type SheetState =
         | { kind: "none" }
-        | { kind: "edit"; entry: Entry }
-        | { kind: "menu"; entry: Entry };
+        | { kind: "edit"; entry: Entry };
 
     const store = getEntriesContext();
     let filter = $state<Filter>("all");
@@ -19,9 +17,9 @@
     function openEdit(entry: Entry) {
         sheet = { kind: "edit", entry };
     }
-    function openMenu(entry: Entry) {
-        sheet = { kind: "menu", entry };
-    }
+    // Long-press is a no-op in slice #1 (foundation rewire). Slice #2
+    // reattaches it to trigger "Polish with AI" via entriesStore.polish().
+    function onLongPress(_entry: Entry) {}
     function closeSheet() {
         sheet = { kind: "none" };
     }
@@ -76,11 +74,9 @@
         </div>
     </header>
 
-    <InboxList {sections} onTap={openEdit} onLongPress={openMenu} />
+    <InboxList {sections} onTap={openEdit} {onLongPress} />
 </div>
 
 {#if sheet.kind === "edit"}
     <EditSheet entry={sheet.entry} onClose={closeSheet} />
-{:else if sheet.kind === "menu"}
-    <MenuSheet entry={sheet.entry} onClose={closeSheet} />
 {/if}

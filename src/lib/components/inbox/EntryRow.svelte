@@ -3,6 +3,7 @@
   import type { Entry } from "$lib/stores/entries-store.svelte";
   import { getEntriesContext } from "$lib/stores/entries-store.svelte";
   import { getToastContext } from "$lib/stores/toast-store.svelte";
+  import { effectiveText } from "$lib/utils/effective-text";
   import { createGestureState } from "./gesture-state";
 
   interface Props {
@@ -21,7 +22,6 @@
   type Phase = "idle" | "dragging" | "rebounding" | "flying";
   let phase = $state<Phase>("idle");
   let translateX = $state(0);
-  let pulsing = $state(false);
 
   let activeDirection = $state<"left" | "right" | "none">("none");
 
@@ -45,13 +45,9 @@
   function handleLongPress() {
     activeDirection = "none";
     translateX = 0;
-    // Haptic (no-op on iOS Safari).
-    if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
-      navigator.vibrate(10);
-    }
-    // Visual pulse.
-    pulsing = true;
-    setTimeout(() => { pulsing = false; }, 120);
+    // No haptic or visual pulse in slice #1: long-press is a no-op.
+    // Slice #2 reattaches feedback when the gesture actually triggers
+    // "Polish with AI".
     onLongPress(entry);
   }
 
@@ -167,9 +163,7 @@
       ? "transform 300ms cubic-bezier(0, 0, 0.2, 1)"
       : phase === "flying"
         ? "transform 200ms ease-in"
-        : pulsing
-          ? "transform 120ms ease-out"
-          : "none",
+        : "none",
   );
 </script>
 
@@ -200,7 +194,7 @@
     role="button"
     tabindex="0"
     class="relative z-20 flex items-start gap-2 py-2 px-4 rounded-md bg-card border border-border touch-pan-y select-none"
-    style:transform={`translateX(${translateX}px) scale(${pulsing ? 0.98 : 1})`}
+    style:transform={`translateX(${translateX}px)`}
     style:transition={contentTransition}
     onpointerdown={onPointerDown}
     onpointermove={onPointerMove}
@@ -222,6 +216,6 @@
       class="flex-auto text-base leading-[1.6] text-foreground break-words"
       class:line-through={entry.done}
       class:opacity-60={entry.done}
-    >{entry.displayText}</span>
+    >{effectiveText(entry)}</span>
   </div>
 </li>

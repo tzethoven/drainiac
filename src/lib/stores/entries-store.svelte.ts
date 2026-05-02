@@ -1,9 +1,10 @@
 import type { Category } from "$lib/utils/transcript-parser";
 import { getContext, setContext } from "svelte";
+import { CURRENT_SCHEMA_VERSION, migrateAll } from "./entries-migrations";
 
 export interface Entry {
   id: string;
-  schemaVersion: 1;
+  schemaVersion: 2;
   category: Category;
   displayText: string;
   rawTranscript: string;
@@ -13,6 +14,14 @@ export interface Entry {
   updatedAt: number;
   processedAt?: number;
   warning?: "partial-transcription";
+  /** AI-polished form of the entry. `null` when not polished or reverted. */
+  polishedText: string | null;
+  /** Timestamp of the last successful polish. `null` when not polished. */
+  polishedAt: number | null;
+  /** Gemini model id used for the polish, e.g. `gemini-3.1-flash-lite-preview`. */
+  polishedModel: string | null;
+  /** Prompt template version used for the polish. */
+  polishedPromptVersion: number | null;
 }
 
 export interface AddInput {
@@ -51,18 +60,23 @@ export function createEntriesStore(
   const storage = options.storage;
   const storageKey = options.storageKey ?? "memento:entries";
 
-  let entries = $state<Entry[]>(loadInitial(storage, storageKey));
+  const loaded = loadInitial(storage, storageKey);
+  let entries = $state<Entry[]>(loaded.entries);
 
   function persist() {
     if (!storage) return;
     storage.setItem(storageKey, JSON.stringify(entries));
   }
 
+  // Eagerly persist migrated entries so storage is consistently
+  // current-schema-shaped from first load onward. Runs once per store.
+  if (loaded.changed) persist();
+
   function add(input: AddInput): Entry {
     const ts = now();
     const entry: Entry = {
       id: idFactory(),
-      schemaVersion: 1,
+      schemaVersion: CURRENT_SCHEMA_VERSION,
       category: input.category,
       displayText: input.displayText,
       rawTranscript: input.rawTranscript,
@@ -70,6 +84,10 @@ export function createEntriesStore(
       done: false,
       createdAt: ts,
       updatedAt: ts,
+      polishedText: null,
+      polishedAt: null,
+      polishedModel: null,
+      polishedPromptVersion: null,
       ...(input.warning ? { warning: input.warning } : {}),
     };
     entries = [entry, ...entries];
@@ -123,15 +141,19 @@ export function createEntriesStore(
   };
 }
 
-function loadInitial(storage: Storage | undefined, key: string): Entry[] {
-  if (!storage) return [];
+function loadInitial(
+  storage: Storage | undefined,
+  key: string,
+): { entries: Entry[]; changed: boolean } {
+  if (!storage) return { entries: [], changed: false };
   const raw = storage.getItem(key);
-  if (!raw) return [];
+  if (!raw) return { entries: [], changed: false };
   try {
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as Entry[]) : [];
+    if (!Array.isArray(parsed)) return { entries: [], changed: false };
+    return migrateAll(parsed);
   } catch {
-    return [];
+    return { entries: [], changed: false };
   }
 }
 

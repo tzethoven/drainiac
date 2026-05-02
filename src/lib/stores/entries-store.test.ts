@@ -44,7 +44,7 @@ describe("entries-store", () => {
 
     expect(entry).toEqual({
       id: "id-1",
-      schemaVersion: 1,
+      schemaVersion: 2,
       category: "note",
       displayText: "Remember this.",
       rawTranscript: "note remember this",
@@ -52,6 +52,10 @@ describe("entries-store", () => {
       done: false,
       createdAt: 12_345,
       updatedAt: 12_345,
+      polishedText: null,
+      polishedAt: null,
+      polishedModel: null,
+      polishedPromptVersion: null,
     });
     expect("processedAt" in entry).toBe(false);
   });
@@ -89,7 +93,7 @@ describe("entries-store", () => {
     expect(second.entries).toHaveLength(1);
     expect(second.entries[0].displayText).toBe("Buy milk.");
     expect(second.entries[0].category).toBe("todo");
-    expect(second.entries[0].schemaVersion).toBe(1);
+    expect(second.entries[0].schemaVersion).toBe(2);
   });
 
   it("update() mutates allowed fields and bumps updatedAt without changing createdAt", () => {
@@ -243,7 +247,7 @@ describe("entries-store", () => {
 
     expect(rehydrated).toEqual({
       id: entry.id,
-      schemaVersion: 1,
+      schemaVersion: 2,
       category: "todo",
       displayText: "Buy milk.",
       rawTranscript: "todo buy milk",
@@ -251,6 +255,10 @@ describe("entries-store", () => {
       done: true,
       createdAt: 1_000,
       updatedAt: 2_000,
+      polishedText: null,
+      polishedAt: null,
+      polishedModel: null,
+      polishedPromptVersion: null,
     });
     expect("processedAt" in rehydrated).toBe(false);
   });
@@ -281,6 +289,105 @@ describe("entries-store", () => {
     });
 
     expect(entry.warning).toBeUndefined();
+  });
+
+  describe("migration on load", () => {
+    it("upgrades a v1-shaped localStorage blob to v2 entries in the store", () => {
+      const deps = makeDeps();
+      const v1 = {
+        id: "legacy-1",
+        schemaVersion: 1,
+        category: "todo",
+        displayText: "Old entry.",
+        rawTranscript: "todo old entry",
+        source: "voice",
+        done: false,
+        createdAt: 100,
+        updatedAt: 100,
+      };
+      deps.storage.setItem("memento:entries", JSON.stringify([v1]));
+
+      const store = createEntriesStore(deps);
+
+      expect(store.entries).toHaveLength(1);
+      expect(store.entries[0].schemaVersion).toBe(2);
+      expect(store.entries[0].polishedText).toBeNull();
+      expect(store.entries[0].polishedAt).toBeNull();
+      expect(store.entries[0].polishedModel).toBeNull();
+      expect(store.entries[0].polishedPromptVersion).toBeNull();
+    });
+
+    it("eagerly persists v1 → v2 upgrade back to storage on first load", () => {
+      const deps = makeDeps();
+      const v1 = {
+        id: "legacy-1",
+        schemaVersion: 1,
+        category: "todo",
+        displayText: "Old entry.",
+        rawTranscript: "todo old entry",
+        source: "voice",
+        done: false,
+        createdAt: 100,
+        updatedAt: 100,
+      };
+      deps.storage.setItem("memento:entries", JSON.stringify([v1]));
+
+      createEntriesStore(deps);
+
+      const persisted = JSON.parse(deps.storage.getItem("memento:entries")!);
+      expect(persisted).toHaveLength(1);
+      expect(persisted[0].schemaVersion).toBe(2);
+      expect(persisted[0].polishedText).toBeNull();
+    });
+
+    it("does not rewrite storage when every entry is already v2", () => {
+      const deps = makeDeps();
+      const store1 = createEntriesStore(deps);
+      store1.add({ category: "todo", displayText: "A.", rawTranscript: "todo a" });
+
+      const blobBefore = deps.storage.getItem("memento:entries")!;
+
+      // Spy on setItem to ensure no write happens on pure-v2 load.
+      let writes = 0;
+      const originalSetItem = deps.storage.setItem.bind(deps.storage);
+      deps.storage.setItem = (k: string, v: string) => {
+        writes++;
+        originalSetItem(k, v);
+      };
+
+      createEntriesStore({ storage: deps.storage });
+
+      expect(writes).toBe(0);
+      expect(deps.storage.getItem("memento:entries")).toBe(blobBefore);
+    });
+
+    it("drops malformed entries from storage and persists the cleaned list", () => {
+      const deps = makeDeps();
+      const v1 = {
+        id: "good",
+        schemaVersion: 1,
+        category: "todo",
+        displayText: "Keep me.",
+        rawTranscript: "todo keep me",
+        source: "voice",
+        done: false,
+        createdAt: 100,
+        updatedAt: 100,
+      };
+      const bad = { id: "bad", schemaVersion: 999 };
+      deps.storage.setItem(
+        "memento:entries",
+        JSON.stringify([v1, bad, null, "nonsense"]),
+      );
+
+      const store = createEntriesStore(deps);
+
+      expect(store.entries).toHaveLength(1);
+      expect(store.entries[0].id).toBe("good");
+      const persisted = JSON.parse(deps.storage.getItem("memento:entries")!);
+      expect(persisted).toHaveLength(1);
+      expect(persisted[0].id).toBe("good");
+    });
   });
 
   it("localStorage round-trip preserves the warning flag", () => {
