@@ -1,6 +1,10 @@
 import type { Category } from "$lib/utils/transcript-parser";
 import { getContext, setContext } from "svelte";
 import { CURRENT_SCHEMA_VERSION, migrateAll } from "./entries-migrations";
+import {
+  MAX_POLISH_TRANSCRIPT_CHARS,
+  type PolishFailureReason,
+} from "$lib/polish/types";
 
 export interface Entry {
   id: string;
@@ -56,13 +60,20 @@ export interface EntriesStoreOptions {
   /** Override for tests. Defaults to global `fetch`. */
   fetchImpl?: typeof fetch;
   /**
-   * Optional hook called when the polish request fails (network error
-   * or non-`ok: true` response). Lets the adapter wire a toast without
-   * coupling the store to the toast store directly. Not called when
-   * the request is discarded because the entry was edited or removed
-   * while in flight.
+   * Optional hook called when the polish request fails. The `reason`
+   * is the server-taxonomy discriminant (see `$lib/polish/types`) so
+   * the adapter can map to the right toast copy without the store
+   * importing the toast store. Not called when the request is
+   * discarded because the entry was edited or removed while in flight.
+   *
+   * `retryAfterMs` is forwarded verbatim from the server when present
+   * on `rate-limited` / `quota-exhausted`. Slice #4 does not render a
+   * countdown; the parameter keeps the seam open for future UI.
    */
-  onPolishError?: () => void;
+  onPolishError?: (
+    reason: PolishFailureReason,
+    details?: { retryAfterMs?: number },
+  ) => void;
 }
 
 export interface EntriesStore {
@@ -184,6 +195,14 @@ export function createEntriesStore(
     if (!entry) return;
     if (entry.polishedText != null) return;
 
+    // Client-side length guard: a cheap UX win that avoids the network
+    // round-trip for transcripts the server would reject anyway. The
+    // server guard remains authoritative.
+    if (entry.rawTranscript.length > MAX_POLISH_TRANSCRIPT_CHARS) {
+      onPolishError?.("too-long");
+      return;
+    }
+
     polishingIds.add(id);
     const { rawTranscript, category } = entry;
 
@@ -195,7 +214,10 @@ export function createEntriesStore(
         body: JSON.stringify({ rawTranscript, category }),
       });
     } catch {
-      if (polishingIds.delete(id)) onPolishError?.();
+      // Network throw — no response, so we can't be more specific than
+      // `upstream`. (Timeouts originate server-side in slice #4 and
+      // come back as a real 504 body, not a client-side throw.)
+      if (polishingIds.delete(id)) onPolishError?.("upstream");
       return;
     }
 
@@ -203,48 +225,54 @@ export function createEntriesStore(
     // discard the response silently.
     if (!polishingIds.has(id)) return;
 
-    if (!response.ok) {
-      polishingIds.delete(id);
-      onPolishError?.();
-      return;
-    }
-
     let payload: unknown;
     try {
       payload = await response.json();
     } catch {
-      if (polishingIds.delete(id)) onPolishError?.();
+      if (polishingIds.delete(id)) onPolishError?.("upstream");
       return;
     }
 
     // Re-check: the response parse is async too.
     if (!polishingIds.has(id)) return;
 
-    const ok =
-      payload && typeof payload === "object" && (payload as { ok?: unknown }).ok === true;
-    if (!ok) {
+    if (!isObject(payload)) {
       polishingIds.delete(id);
-      onPolishError?.();
+      onPolishError?.("upstream");
       return;
     }
 
-    const { polishedText, model, promptVersion } = payload as {
-      polishedText: unknown;
-      model: unknown;
-      promptVersion: unknown;
-    };
-    if (
-      typeof polishedText !== "string" ||
-      typeof model !== "string" ||
-      typeof promptVersion !== "number"
-    ) {
+    if (payload.ok === true) {
+      const { polishedText, model, promptVersion } = payload as {
+        polishedText: unknown;
+        model: unknown;
+        promptVersion: unknown;
+      };
+      if (
+        typeof polishedText !== "string" ||
+        typeof model !== "string" ||
+        typeof promptVersion !== "number"
+      ) {
+        polishingIds.delete(id);
+        onPolishError?.("upstream");
+        return;
+      }
+      applyPolishResult(id, polishedText, model, promptVersion);
       polishingIds.delete(id);
-      onPolishError?.();
       return;
     }
 
-    applyPolishResult(id, polishedText, model, promptVersion);
+    // `ok: false` branch. Trust the server's `reason` literal when it
+    // matches the taxonomy; anything else falls back to `upstream`.
     polishingIds.delete(id);
+    const reason = coerceReason(payload.reason);
+    const retryAfterMs =
+      typeof payload.retryAfterMs === "number" ? payload.retryAfterMs : undefined;
+    if (retryAfterMs !== undefined) {
+      onPolishError?.(reason, { retryAfterMs });
+    } else {
+      onPolishError?.(reason);
+    }
   }
 
   function isPolishing(id: string): boolean {
@@ -294,6 +322,26 @@ function loadInitial(
   } catch {
     return { entries: [], changed: false };
   }
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object";
+}
+
+const KNOWN_REASONS: ReadonlySet<PolishFailureReason> = new Set([
+  "too-long",
+  "bad-request",
+  "rate-limited",
+  "quota-exhausted",
+  "timeout",
+  "upstream",
+]);
+
+/** Trust the server's `reason` when it's in the taxonomy; else `upstream`. */
+function coerceReason(reason: unknown): PolishFailureReason {
+  return typeof reason === "string" && KNOWN_REASONS.has(reason as PolishFailureReason)
+    ? (reason as PolishFailureReason)
+    : "upstream";
 }
 
 const ENTRIES_CONTEXT_KEY = Symbol("memento:entries-store");

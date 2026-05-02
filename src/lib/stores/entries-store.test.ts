@@ -664,7 +664,7 @@ describe("entries-store", () => {
     it("calls onPolishError when response.ok is false", async () => {
       const deps = makeDeps();
       const fetchImpl = vi.fn(async () =>
-        jsonResponse({ ok: false, reason: "upstream" }),
+        jsonResponse({ ok: false, reason: "upstream", status: 500 }, { status: 502 }),
       );
       const onPolishError = vi.fn();
       const store = createEntriesStore({
@@ -680,8 +680,147 @@ describe("entries-store", () => {
 
       await store.polish(entry.id);
 
-      expect(onPolishError).toHaveBeenCalledTimes(1);
+      expect(onPolishError).toHaveBeenCalledWith("upstream");
       expect(store.entries[0].polishedText).toBeNull();
+    });
+
+    it("propagates the server's reason literal to onPolishError (rate-limited)", async () => {
+      const deps = makeDeps();
+      const fetchImpl = vi.fn(async () =>
+        jsonResponse({ ok: false, reason: "rate-limited" }, { status: 429 }),
+      );
+      const onPolishError = vi.fn();
+      const store = createEntriesStore({
+        ...deps,
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        onPolishError,
+      });
+      const entry = store.add({
+        category: "todo",
+        displayText: "x",
+        rawTranscript: "todo x",
+      });
+
+      await store.polish(entry.id);
+
+      expect(onPolishError).toHaveBeenCalledWith("rate-limited");
+      expect(store.isPolishing(entry.id)).toBe(false);
+    });
+
+    it("forwards retryAfterMs to onPolishError when the server sent it", async () => {
+      const deps = makeDeps();
+      const fetchImpl = vi.fn(async () =>
+        jsonResponse(
+          { ok: false, reason: "rate-limited", retryAfterMs: 2000 },
+          { status: 429 },
+        ),
+      );
+      const onPolishError = vi.fn();
+      const store = createEntriesStore({
+        ...deps,
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        onPolishError,
+      });
+      const entry = store.add({
+        category: "todo",
+        displayText: "x",
+        rawTranscript: "todo x",
+      });
+
+      await store.polish(entry.id);
+
+      expect(onPolishError).toHaveBeenCalledWith("rate-limited", { retryAfterMs: 2000 });
+    });
+
+    it("propagates timeout / quota-exhausted / too-long / bad-request reasons", async () => {
+      const cases: Array<{ reason: string; status: number }> = [
+        { reason: "timeout", status: 504 },
+        { reason: "quota-exhausted", status: 429 },
+        { reason: "too-long", status: 400 },
+        { reason: "bad-request", status: 400 },
+      ];
+      for (const { reason, status } of cases) {
+        const deps = makeDeps();
+        const fetchImpl = vi.fn(async () =>
+          jsonResponse({ ok: false, reason }, { status }),
+        );
+        const onPolishError = vi.fn();
+        const store = createEntriesStore({
+          ...deps,
+          fetchImpl: fetchImpl as unknown as typeof fetch,
+          onPolishError,
+        });
+        const entry = store.add({
+          category: "todo",
+          displayText: "x",
+          rawTranscript: "todo x",
+        });
+        await store.polish(entry.id);
+        expect(onPolishError).toHaveBeenCalledWith(reason);
+      }
+    });
+
+    it("coerces unknown reason strings to 'upstream'", async () => {
+      const deps = makeDeps();
+      const fetchImpl = vi.fn(async () =>
+        jsonResponse({ ok: false, reason: "teapot" }, { status: 418 }),
+      );
+      const onPolishError = vi.fn();
+      const store = createEntriesStore({
+        ...deps,
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        onPolishError,
+      });
+      const entry = store.add({
+        category: "todo",
+        displayText: "x",
+        rawTranscript: "todo x",
+      });
+      await store.polish(entry.id);
+      expect(onPolishError).toHaveBeenCalledWith("upstream");
+    });
+
+    it("short-circuits oversized transcripts without calling fetch", async () => {
+      const deps = makeDeps();
+      const fetchImpl = vi.fn(async () =>
+        jsonResponse({ ok: true, polishedText: "x", model: "m", promptVersion: 1 }),
+      );
+      const onPolishError = vi.fn();
+      const store = createEntriesStore({
+        ...deps,
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        onPolishError,
+      });
+      const entry = store.add({
+        category: "todo",
+        displayText: "x",
+        rawTranscript: "a".repeat(4001),
+      });
+
+      await store.polish(entry.id);
+
+      expect(fetchImpl).not.toHaveBeenCalled();
+      expect(onPolishError).toHaveBeenCalledWith("too-long");
+      expect(store.isPolishing(entry.id)).toBe(false);
+      expect(store.entries[0].polishedText).toBeNull();
+    });
+
+    it("does not short-circuit at exactly the 4000-char limit", async () => {
+      const deps = makeDeps();
+      const fetchImpl = vi.fn(async () =>
+        jsonResponse({ ok: true, polishedText: "ok", model: "m", promptVersion: 1 }),
+      );
+      const store = createEntriesStore({
+        ...deps,
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+      });
+      const entry = store.add({
+        category: "todo",
+        displayText: "x",
+        rawTranscript: "a".repeat(4000),
+      });
+      await store.polish(entry.id);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
     });
   });
 

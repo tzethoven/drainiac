@@ -6,6 +6,7 @@
 		setEntriesContext,
 	} from "$lib/stores/entries-store.svelte";
 	import { createToastStore, setToastContext } from "$lib/stores/toast-store.svelte";
+	import { POLISH_FAILURE_MESSAGES } from "$lib/polish/types";
 	import Toast from "$lib/components/Toast.svelte";
 	import '../app.css';
 
@@ -17,7 +18,7 @@
 	setEntriesContext(
 		createEntriesStore({
 			storage: browser ? localStorage : undefined,
-			onPolishError: () => toast.show("Couldn't polish — try again."),
+			onPolishError: (reason) => toast.show(POLISH_FAILURE_MESSAGES[reason]),
 		}),
 	);
 
