@@ -111,6 +111,21 @@ land; do use the agreed name when they do.
   via the client SDK), signed-in (avatar + popover with email and
   sign-out). Lives at `src/lib/components/auth/AuthChip.svelte`.
 
+- **CurrentUser** — the narrowed user shape exposed to route
+  handlers and `load` functions: `{ id, email, name, image }`.
+  Produced by `requireUser` from better-auth's `User`. The narrow
+  shape *is* the contract — nothing outside `src/lib/server/auth.ts`
+  should import better-auth's `User` type. See invariant 12.
+
+- **authForEvent** — the single SvelteKit-aware seam between a
+  `RequestEvent` and a configured better-auth instance. Reads the
+  `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
+  `EMAIL_ALLOWLIST` env vars and derives `baseURL` from
+  `event.url.origin`. Every request-scoped caller (`requireUser`,
+  the `/api/auth/[...all]` mount, future hooks) goes through it so
+  adding a new auth secret is a one-file diff. Lives in
+  `src/lib/server/auth.ts`.
+
 ### Planned
 
 - **Bucket** *(planned)* — the top-level isolation boundary between
@@ -202,12 +217,17 @@ These are enforced today. Call them out in reviews if someone
     new public route is a deliberate act: add the path to
     `PUBLIC_API_ROUTES` and explain why in the PR.
 
-12. **Never return `event.locals.user` / `event.locals.session`
-    wholesale from a server `load` function.** Cherry-pick primitive
-    fields (email, id, display name) only. The session object
-    contains material that must not reach the client payload; a
-    broad return shape risks silently exfiltrating it. Belt-and-
-    braces on top of SvelteKit's `$lib/server/*` build-time guard.
+12. **`event.locals.user` is a narrowed `CurrentUser`, not the full
+    better-auth `User`.** `requireUser` projects the better-auth user
+    down to `{ id, email, name, image }` before writing to locals and
+    returning. This is the structural form of the old "never return
+    `locals.user` wholesale" rule: with the narrow shape there is
+    nothing dangerous to leak, so server `load` functions may return
+    `locals.user` directly. Widening `CurrentUser` is a deliberate
+    act — audit whether the new field is safe to send to the client.
+    `event.locals.session` is deliberately not populated; nothing
+    outside the auth gate needs it and keeping it off `locals`
+    removes a foot-gun.
 
 13. **Service-worker `fetch` replays must preserve credentials.**
     Any SW that intercepts requests and re-issues them MUST use

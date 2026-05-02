@@ -36,6 +36,27 @@ export type AuthSecrets = {
   baseURL?: string;
 };
 
+/**
+ * Narrowed user shape exposed to the rest of the app.
+ *
+ * `requireUser` projects better-auth's `User` down to these four fields
+ * before returning and before writing to `event.locals.user`. The
+ * projection is the structural version of invariant 12 in `CONTEXT.md`
+ * ("never return `event.locals.user` wholesale from a server `load`"):
+ * with this shape there is nothing dangerous to leak — returning it
+ * wholesale is safe by construction.
+ *
+ * If a route genuinely needs another field from the better-auth user
+ * row, widen this type deliberately (and audit whether the new field
+ * is safe to send to the client).
+ */
+export type CurrentUser = {
+  id: string;
+  email: string;
+  name: string;
+  image: string | null;
+};
+
 function build(db: D1Database, secrets: AuthSecrets) {
   const allowlist = parseAllowlist(secrets.emailAllowlist);
   return betterAuth({
@@ -105,8 +126,10 @@ const cache = new WeakMap<D1Database, ReturnType<typeof build>>();
 /**
  * Return a better-auth instance bound to the given platform and secrets.
  *
- * Call this from `+server.ts` / hooks with `event.platform!` and env
- * values read via `$env/dynamic/private`.
+ * Pure factory — knows nothing about SvelteKit. Runtime code normally
+ * goes through `authForEvent(event)` instead; this entry point exists
+ * for tests and any future caller that already has a `(platform,
+ * secrets)` pair in hand.
  */
 export function getAuth(platform: App.Platform, secrets: AuthSecrets) {
   const db = platform.env.AUTH_DB;
@@ -116,6 +139,31 @@ export function getAuth(platform: App.Platform, secrets: AuthSecrets) {
     cache.set(db, instance);
   }
   return instance;
+}
+
+/**
+ * SvelteKit-aware wrapper around `getAuth`: the single seam between a
+ * `RequestEvent` and a configured better-auth instance.
+ *
+ * Concentrates (a) the env-var names auth depends on and (b) the
+ * `baseURL = event.url.origin` convention into one place. Every
+ * request-scoped caller — `requireUser`, the `/api/auth/[...all]`
+ * mount, any future hook — should go through here rather than
+ * assembling `AuthSecrets` inline. Adding a new secret is then a
+ * one-file diff.
+ *
+ * Kept out of the pure `getAuth` / `build` path so `auth.cli.ts` can
+ * still load this module under `@better-auth/cli` without a
+ * SvelteKit runtime.
+ */
+export function authForEvent(event: RequestEvent) {
+  return getAuth(event.platform!, {
+    secret: env.BETTER_AUTH_SECRET,
+    googleClientId: env.GOOGLE_CLIENT_ID,
+    googleClientSecret: env.GOOGLE_CLIENT_SECRET,
+    emailAllowlist: env.EMAIL_ALLOWLIST ?? '',
+    baseURL: event.url.origin,
+  });
 }
 
 /**
@@ -136,10 +184,16 @@ export { build as _buildAuthForCLI };
  *      second allowlist gate (see ADR 0003); removing someone from
  *      the env takes effect on the very next request without any DB
  *      cleanup. → `error(401, 'not_allowlisted')`.
- *   4. On success, populates `event.locals.session` / `event.locals.user`
- *      as a convenience for the caller and returns the `user`.
+ *   4. On success, populates `event.locals.user` with a narrowed
+ *      `CurrentUser` and returns it.
  *
- * Deliberately a thin composition over `getAuth` + the pure
+ * The narrowed shape is deliberate: the full better-auth `User`
+ * carries fields that must not reach the client payload. Projecting
+ * here means downstream `load` functions can return `locals.user`
+ * wholesale without re-applying a per-field cherry-pick (the
+ * structural version of invariant 12 in `CONTEXT.md`).
+ *
+ * Deliberately a thin composition over `authForEvent` + the pure
  * `allowlist` module — no extra policy lives here. If you need to
  * branch on role / claim / feature flag, layer it on top in the
  * route; don't grow this function.
@@ -149,15 +203,8 @@ export { build as _buildAuthForCLI };
  * asserts every `/api/*` route either calls `requireUser` or is
  * listed in `PUBLIC_API_ROUTES`.
  */
-export async function requireUser(event: RequestEvent) {
-  const auth = getAuth(event.platform!, {
-    secret: env.BETTER_AUTH_SECRET,
-    googleClientId: env.GOOGLE_CLIENT_ID,
-    googleClientSecret: env.GOOGLE_CLIENT_SECRET,
-    emailAllowlist: env.EMAIL_ALLOWLIST ?? "",
-    baseURL: event.url.origin,
-  });
-  console.log(env.EMAIL_ALLOWLIST);
+export async function requireUser(event: RequestEvent): Promise<CurrentUser> {
+  const auth = authForEvent(event);
 
   const result = await auth.api.getSession({
     headers: event.request.headers,
@@ -175,7 +222,12 @@ export async function requireUser(event: RequestEvent) {
     throw error(401, "not_allowlisted");
   }
 
-  event.locals.session = result.session;
-  event.locals.user = result.user;
-  return result.user;
+  const currentUser: CurrentUser = {
+    id: result.user.id,
+    email: result.user.email,
+    name: result.user.name,
+    image: result.user.image ?? null,
+  };
+  event.locals.user = currentUser;
+  return currentUser;
 }
