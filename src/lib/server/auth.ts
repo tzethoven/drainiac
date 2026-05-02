@@ -18,6 +18,8 @@
 import { APIError, betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { drizzle } from 'drizzle-orm/d1';
+import { error, type RequestEvent } from '@sveltejs/kit';
+import { env } from '$env/dynamic/private';
 
 import { isAllowed, parseAllowlist } from './allowlist';
 import * as schema from './db/schema';
@@ -122,4 +124,58 @@ export function getAuth(platform: App.Platform, secrets: AuthSecrets) {
  * Runtime code must go through `getAuth()`.
  */
 export { build as _buildAuthForCLI };
+
+/**
+ * The single server-side auth gate for `/api/*` routes.
+ *
+ * Behaviour:
+ *   1. Asks better-auth for the current session using the request
+ *      headers (session cookie).
+ *   2. On missing / invalid session → `error(401, 'unauthenticated')`.
+ *   3. Re-checks the email against `EMAIL_ALLOWLIST`. This is the
+ *      second allowlist gate (see ADR 0003); removing someone from
+ *      the env takes effect on the very next request without any DB
+ *      cleanup. → `error(401, 'not_allowlisted')`.
+ *   4. On success, populates `event.locals.session` / `event.locals.user`
+ *      as a convenience for the caller and returns the `user`.
+ *
+ * Deliberately a thin composition over `getAuth` + the pure
+ * `allowlist` module — no extra policy lives here. If you need to
+ * branch on role / claim / feature flag, layer it on top in the
+ * route; don't grow this function.
+ *
+ * Callers: route handlers under `src/routes/api/**` that must be
+ * protected. The route-coverage test (`route-coverage.test.ts`)
+ * asserts every `/api/*` route either calls `requireUser` or is
+ * listed in `PUBLIC_API_ROUTES`.
+ */
+export async function requireUser(event: RequestEvent) {
+	const auth = getAuth(event.platform!, {
+		secret: env.BETTER_AUTH_SECRET,
+		googleClientId: env.GOOGLE_CLIENT_ID,
+		googleClientSecret: env.GOOGLE_CLIENT_SECRET,
+		emailAllowlist: env.EMAIL_ALLOWLIST ?? '',
+		baseURL: event.url.origin,
+	});
+
+	const result = await auth.api.getSession({
+		headers: event.request.headers,
+	});
+
+	if (!result?.session || !result.user) {
+		throw error(401, 'unauthenticated');
+	}
+
+	// Re-check allowlist on every request — intentional. The set
+	// is small and parsing is cheap; doing it per-request means the
+	// allowlist env var is the single source of truth for access.
+	const allowlist = parseAllowlist(env.EMAIL_ALLOWLIST ?? '');
+	if (!isAllowed(result.user.email, allowlist)) {
+		throw error(401, 'not_allowlisted');
+	}
+
+	event.locals.session = result.session;
+	event.locals.user = result.user;
+	return result.user;
+}
 
