@@ -3,11 +3,20 @@ import { json } from "@sveltejs/kit";
 import { env } from "$env/dynamic/private";
 
 import { requireUser } from "$lib/server/auth";
-import { createGeminiClient, type PolishResult } from "$lib/server/polish/gemini";
+import {
+  createGeminiClient,
+  type PolishResult,
+} from "$lib/server/polish/gemini";
 import { MAX_POLISH_TRANSCRIPT_CHARS } from "$lib/polish/types";
 import type { Category } from "$lib/utils/transcript-parser";
 
-const VALID_CATEGORIES: ReadonlySet<Category> = new Set(["todo", "note", "idea"]);
+const VALID_CATEGORIES: ReadonlySet<Category> = new Set([
+  "todo",
+  "note",
+  "idea",
+]);
+
+export const prerender = false;
 
 /**
  * POST /api/polish — returns a polished form of `rawTranscript` for the

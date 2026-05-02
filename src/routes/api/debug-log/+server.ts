@@ -1,6 +1,8 @@
 import type { RequestHandler } from "./$types";
 import { json } from "@sveltejs/kit";
 
+export const prerender = false;
+
 /**
  * Dev-only sink that forwards client-side debug logs to the Vite dev server's
  * terminal. Gated to DEV via the client caller; the endpoint itself returns
