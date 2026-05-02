@@ -128,6 +128,46 @@ describe("entries-store", () => {
     expect(updated.rawTranscript).toBe("todo buy milk");
   });
 
+  it("update() merges a polish-clearing patch (all four fields to null)", () => {
+    const deps = makeDeps();
+    deps.setNow(1_000);
+    const store = createEntriesStore(deps);
+    const entry = store.add({
+      category: "todo",
+      displayText: "buy milk",
+      rawTranscript: "todo buy milk",
+    });
+
+    // Simulate a prior polish by patching the four fields directly
+    // through the widened update signature.
+    deps.setNow(2_000);
+    store.update(entry.id, {
+      polishedText: "Buy milk.",
+      polishedAt: 2_000,
+      polishedModel: "test-model",
+      polishedPromptVersion: 1,
+    });
+    expect(store.entries[0].polishedText).toBe("Buy milk.");
+
+    // Now clear the polish via the same path (the revert operation).
+    deps.setNow(3_000);
+    store.update(entry.id, {
+      polishedText: null,
+      polishedAt: null,
+      polishedModel: null,
+      polishedPromptVersion: null,
+    });
+
+    const after = store.entries[0];
+    expect(after.polishedText).toBeNull();
+    expect(after.polishedAt).toBeNull();
+    expect(after.polishedModel).toBeNull();
+    expect(after.polishedPromptVersion).toBeNull();
+    expect(after.updatedAt).toBe(3_000);
+    expect(after.displayText).toBe("buy milk");
+    expect(after.rawTranscript).toBe("todo buy milk");
+  });
+
   it("remove() deletes the entry with the given id", () => {
     const deps = makeDeps();
     const store = createEntriesStore(deps);

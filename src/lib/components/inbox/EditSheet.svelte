@@ -3,8 +3,9 @@
   import BottomSheet from "$lib/components/ui/BottomSheet.svelte";
   import type { Entry } from "$lib/stores/entries-store.svelte";
   import { getEntriesContext } from "$lib/stores/entries-store.svelte";
-  import { normalizeEditText, isBlank } from "$lib/utils/edit-text";
+  import { isBlank } from "$lib/utils/edit-text";
   import { effectiveText } from "$lib/utils/effective-text";
+  import { computeEditSave, REVERT_POLISH_PATCH } from "$lib/utils/edit-save";
   import type { Category } from "$lib/utils/transcript-parser";
 
   interface Props {
@@ -52,13 +53,21 @@
 
   function save() {
     if (blank) return;
-    const next = normalizeEditText(value);
-    // Slice #3 will refine this to clear polishedText when the saved
-    // text differs from the current polishedText. For now, retain
-    // pre-polish behaviour: write displayText if changed.
-    if (next !== entry.displayText) {
-      store.update(entry.id, { displayText: next });
-    }
+    // Three-case logic lives in `computeEditSave` so it can be unit-
+    // tested without a component harness. `null` means "no write" —
+    // critically, this preserves a polished entry when the user opened
+    // the sheet only to re-read.
+    const patch = computeEditSave(value, entry);
+    if (patch) store.update(entry.id, patch);
+    onClose();
+  }
+
+  const canRevert = $derived(entry.polishedText != null);
+
+  function revert() {
+    // Clear the four polish fields in one shot. `displayText` and
+    // `rawTranscript` are untouched — long-press can re-polish.
+    store.update(entry.id, { ...REVERT_POLISH_PATCH });
     onClose();
   }
 </script>
@@ -100,6 +109,15 @@
     </div>
 
     <div class="flex justify-end gap-2">
+      {#if canRevert}
+        <button
+          type="button"
+          class="px-4 py-2 rounded-md text-sm font-semibold text-muted-foreground hover:text-foreground mr-auto"
+          onclick={revert}
+        >
+          Revert to original
+        </button>
+      {/if}
       <button
         type="button"
         class="px-4 py-2 rounded-md text-sm font-semibold text-muted-foreground hover:text-foreground"

@@ -24,6 +24,22 @@ export interface Entry {
   polishedPromptVersion: number | null;
 }
 
+/**
+ * Fields the app is allowed to patch through `update()`. User-editable
+ * content (`displayText`, `category`, `done`) plus the four polish
+ * metadata fields, which are patched together when an edit clears a
+ * polish or the user reverts to original. `updatedAt` is always
+ * stamped by the store itself.
+ */
+export type EntryUpdatePatch = Partial<
+  Pick<Entry, "displayText" | "category" | "done"> & {
+    polishedText: string | null;
+    polishedAt: number | null;
+    polishedModel: string | null;
+    polishedPromptVersion: number | null;
+  }
+>;
+
 export interface AddInput {
   category: Category;
   displayText: string;
@@ -53,10 +69,7 @@ export interface EntriesStore {
   readonly entries: Entry[];
   byCategory(category: Category): Entry[];
   add(input: AddInput): Entry;
-  update(
-    id: string,
-    patch: Partial<Pick<Entry, "displayText" | "category" | "done">>,
-  ): void;
+  update(id: string, patch: EntryUpdatePatch): void;
   remove(id: string): void;
   restore(entry: Entry): void;
   clearDone(): void;
@@ -125,10 +138,7 @@ export function createEntriesStore(
     return entry;
   }
 
-  function update(
-    id: string,
-    patch: Partial<Pick<Entry, "displayText" | "category" | "done">>,
-  ): void {
+  function update(id: string, patch: EntryUpdatePatch): void {
     const idx = entries.findIndex((e) => e.id === id);
     if (idx === -1) return;
     // User-initiated change invalidates any in-flight polish.
