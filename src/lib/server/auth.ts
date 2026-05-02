@@ -156,13 +156,32 @@ export function getAuth(platform: App.Platform, secrets: AuthSecrets) {
  * still load this module under `@better-auth/cli` without a
  * SvelteKit runtime.
  */
+/**
+ * Derive the externally-visible origin.
+ *
+ * Behind a reverse proxy (cloudflared tunnel, CF Pages, etc.) TLS is
+ * terminated upstream and the dev server sees plain HTTP, so
+ * `event.url.origin` reports `http://...` even though the browser
+ * used `https://`. better-auth would then hand Google an `http://`
+ * redirect_uri that doesn't match the one registered in the OAuth
+ * client → 400 redirect_uri_mismatch. Prefer `X-Forwarded-Proto` /
+ * `X-Forwarded-Host` when the proxy sets them.
+ */
+function externalOrigin(event: RequestEvent): string {
+  const h = event.request.headers;
+  const proto = h.get('x-forwarded-proto')?.split(',')[0].trim();
+  const host = h.get('x-forwarded-host')?.split(',')[0].trim() ?? h.get('host');
+  if (proto && host) return `${proto}://${host}`;
+  return event.url.origin;
+}
+
 export function authForEvent(event: RequestEvent) {
   return getAuth(event.platform!, {
     secret: env.BETTER_AUTH_SECRET,
     googleClientId: env.GOOGLE_CLIENT_ID,
     googleClientSecret: env.GOOGLE_CLIENT_SECRET,
     emailAllowlist: env.EMAIL_ALLOWLIST ?? '',
-    baseURL: event.url.origin,
+    baseURL: externalOrigin(event),
   });
 }
 
