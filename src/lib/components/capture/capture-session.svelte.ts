@@ -72,14 +72,14 @@ export function createCaptureSession(
   let cancelFinalTimer: (() => void) | null = null;
 
   function dispatch(event: SessionEvent): void {
-    debugLog("session:dispatch", { event, prev: state.phase });
+    // debugLog("session:dispatch", { event, prev: state.phase });
     const { state: next, effects } = reduce(state, event);
     state = next;
     for (const fx of effects) runEffect(fx);
   }
 
   function runEffect(fx: SessionEffect): void {
-    debugLog("session:effect", fx);
+    // debugLog("session:effect", fx);
     switch (fx.type) {
       case "startSpeech":
         controller.start();

@@ -15,89 +15,89 @@
  * map transparently rebuilds — no correctness issue, just a one-off
  * reconstruction cost.
  */
-import { APIError, betterAuth } from 'better-auth';
-import { drizzleAdapter } from 'better-auth/adapters/drizzle';
-import { drizzle } from 'drizzle-orm/d1';
-import { error, type RequestEvent } from '@sveltejs/kit';
-import { env } from '$env/dynamic/private';
+import { APIError, betterAuth } from "better-auth";
+import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { drizzle } from "drizzle-orm/d1";
+import { error, type RequestEvent } from "@sveltejs/kit";
+import { env } from "$env/dynamic/private";
 
-import { isAllowed, parseAllowlist } from './allowlist';
-import * as schema from './db/schema';
+import { isAllowed, parseAllowlist } from "./allowlist";
+import * as schema from "./db/schema";
 
 export type AuthSecrets = {
-	secret: string;
-	googleClientId: string;
-	googleClientSecret: string;
-	/** Raw `EMAIL_ALLOWLIST` env value — comma-separated emails,
-	 * case-insensitive. See `allowlist.ts` for the parser. */
-	emailAllowlist: string;
-	/** Origin of the current request. Used by better-auth to build OAuth
-	 * callback URLs. Derive from `event.url.origin` at call sites. */
-	baseURL?: string;
+  secret: string;
+  googleClientId: string;
+  googleClientSecret: string;
+  /** Raw `EMAIL_ALLOWLIST` env value — comma-separated emails,
+   * case-insensitive. See `allowlist.ts` for the parser. */
+  emailAllowlist: string;
+  /** Origin of the current request. Used by better-auth to build OAuth
+   * callback URLs. Derive from `event.url.origin` at call sites. */
+  baseURL?: string;
 };
 
 function build(db: D1Database, secrets: AuthSecrets) {
-	const allowlist = parseAllowlist(secrets.emailAllowlist);
-	return betterAuth({
-		database: drizzleAdapter(drizzle(db, { schema }), {
-			provider: 'sqlite',
-			schema,
-		}),
-		secret: secrets.secret,
-		baseURL: secrets.baseURL,
-		emailAndPassword: { enabled: false },
-		socialProviders: {
-			google: {
-				clientId: secrets.googleClientId,
-				clientSecret: secrets.googleClientSecret,
-			},
-		},
-		session: {
-			// 30-day sliding session — chosen to be compatible with a future
-			// offline-cached-cookie flow (see PRD "Further Notes"). A user
-			// returning after two weeks offline still has a valid cookie;
-			// `updateAge` refreshes active users so the cookie stays fresh.
-			expiresIn: 60 * 60 * 24 * 30,
-			updateAge: 60 * 60 * 24,
-		},
-		advanced: {
-			cookiePrefix: 'better-auth',
-		},
-		databaseHooks: {
-			user: {
-				create: {
-					/**
-					 * Reject non-allowlisted emails at account creation.
-					 *
-					 * This is the first of two allowlist gates (see ADR 0003). The
-					 * second is in `requireUser()` (Slice 4), which re-checks on
-					 * every request so removing an email from the allowlist takes
-					 * effect on the next call without DB cleanup.
-					 *
-					 * Throwing `APIError` here causes better-auth to redirect to
-					 * the configured `onAPIError.errorURL` below (or to the
-					 * per-request `errorCallbackURL` when the client supplies one).
-					 */
-					before: async (user) => {
-						if (!isAllowed(user.email, allowlist)) {
-							throw new APIError('FORBIDDEN', {
-								message: 'not_allowlisted',
-							});
-						}
-					},
-				},
-			},
-		},
-		onAPIError: {
-			// Coarse default: any API error during the OAuth flow lands here.
-			// The allowlist rejection is the dominant case today; other
-			// failures produce the same toast ("sign-in failed") via the
-			// layout's query-param handler (Slice 5). Refining per-error-code
-			// redirects can happen when we have more failure modes to
-			// distinguish.
-			errorURL: '/?auth_error=not_allowlisted',
-		},
-	});
+  const allowlist = parseAllowlist(secrets.emailAllowlist);
+  return betterAuth({
+    database: drizzleAdapter(drizzle(db, { schema }), {
+      provider: "sqlite",
+      schema,
+    }),
+    secret: secrets.secret,
+    baseURL: secrets.baseURL,
+    emailAndPassword: { enabled: false },
+    socialProviders: {
+      google: {
+        clientId: secrets.googleClientId,
+        clientSecret: secrets.googleClientSecret,
+      },
+    },
+    session: {
+      // 30-day sliding session — chosen to be compatible with a future
+      // offline-cached-cookie flow (see PRD "Further Notes"). A user
+      // returning after two weeks offline still has a valid cookie;
+      // `updateAge` refreshes active users so the cookie stays fresh.
+      expiresIn: 60 * 60 * 24 * 30,
+      updateAge: 60 * 60 * 24,
+    },
+    advanced: {
+      cookiePrefix: "better-auth",
+    },
+    databaseHooks: {
+      user: {
+        create: {
+          /**
+           * Reject non-allowlisted emails at account creation.
+           *
+           * This is the first of two allowlist gates (see ADR 0003). The
+           * second is in `requireUser()` (Slice 4), which re-checks on
+           * every request so removing an email from the allowlist takes
+           * effect on the next call without DB cleanup.
+           *
+           * Throwing `APIError` here causes better-auth to redirect to
+           * the configured `onAPIError.errorURL` below (or to the
+           * per-request `errorCallbackURL` when the client supplies one).
+           */
+          before: async (user) => {
+            if (!isAllowed(user.email, allowlist)) {
+              throw new APIError("FORBIDDEN", {
+                message: "not_allowlisted",
+              });
+            }
+          },
+        },
+      },
+    },
+    onAPIError: {
+      // Coarse default: any API error during the OAuth flow lands here.
+      // The allowlist rejection is the dominant case today; other
+      // failures produce the same toast ("sign-in failed") via the
+      // layout's query-param handler (Slice 5). Refining per-error-code
+      // redirects can happen when we have more failure modes to
+      // distinguish.
+      errorURL: "/?auth_error=not_allowlisted",
+    },
+  });
 }
 
 const cache = new WeakMap<D1Database, ReturnType<typeof build>>();
@@ -109,13 +109,13 @@ const cache = new WeakMap<D1Database, ReturnType<typeof build>>();
  * values read via `$env/dynamic/private`.
  */
 export function getAuth(platform: App.Platform, secrets: AuthSecrets) {
-	const db = platform.env.AUTH_DB;
-	let instance = cache.get(db);
-	if (!instance) {
-		instance = build(db, secrets);
-		cache.set(db, instance);
-	}
-	return instance;
+  const db = platform.env.AUTH_DB;
+  let instance = cache.get(db);
+  if (!instance) {
+    instance = build(db, secrets);
+    cache.set(db, instance);
+  }
+  return instance;
 }
 
 /**
@@ -150,32 +150,32 @@ export { build as _buildAuthForCLI };
  * listed in `PUBLIC_API_ROUTES`.
  */
 export async function requireUser(event: RequestEvent) {
-	const auth = getAuth(event.platform!, {
-		secret: env.BETTER_AUTH_SECRET,
-		googleClientId: env.GOOGLE_CLIENT_ID,
-		googleClientSecret: env.GOOGLE_CLIENT_SECRET,
-		emailAllowlist: env.EMAIL_ALLOWLIST ?? '',
-		baseURL: event.url.origin,
-	});
+  const auth = getAuth(event.platform!, {
+    secret: env.BETTER_AUTH_SECRET,
+    googleClientId: env.GOOGLE_CLIENT_ID,
+    googleClientSecret: env.GOOGLE_CLIENT_SECRET,
+    emailAllowlist: env.EMAIL_ALLOWLIST ?? "",
+    baseURL: event.url.origin,
+  });
+  console.log(env.EMAIL_ALLOWLIST);
 
-	const result = await auth.api.getSession({
-		headers: event.request.headers,
-	});
+  const result = await auth.api.getSession({
+    headers: event.request.headers,
+  });
 
-	if (!result?.session || !result.user) {
-		throw error(401, 'unauthenticated');
-	}
+  if (!result?.session || !result.user) {
+    throw error(401, "unauthenticated");
+  }
 
-	// Re-check allowlist on every request — intentional. The set
-	// is small and parsing is cheap; doing it per-request means the
-	// allowlist env var is the single source of truth for access.
-	const allowlist = parseAllowlist(env.EMAIL_ALLOWLIST ?? '');
-	if (!isAllowed(result.user.email, allowlist)) {
-		throw error(401, 'not_allowlisted');
-	}
+  // Re-check allowlist on every request — intentional. The set
+  // is small and parsing is cheap; doing it per-request means the
+  // allowlist env var is the single source of truth for access.
+  const allowlist = parseAllowlist(env.EMAIL_ALLOWLIST ?? "");
+  if (!isAllowed(result.user.email, allowlist)) {
+    throw error(401, "not_allowlisted");
+  }
 
-	event.locals.session = result.session;
-	event.locals.user = result.user;
-	return result.user;
+  event.locals.session = result.session;
+  event.locals.user = result.user;
+  return result.user;
 }
-

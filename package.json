@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "dev:tunnel": "concurrently --kill-others --names vite,tunnel --prefix-colors auto \"vite dev\" \"dotenv -- cloudflared tunnel --no-autoupdate run\"",
+    "dev:tunnel": "concurrently --kill-others --names vite,tunnel --prefix-colors auto \"vite dev\" \"dotenv -e .env.devcontainer -- cloudflared tunnel --no-autoupdate run\"",
     "build": "vite build",
     "preview": "vite preview",
     "prepare": "svelte-kit sync || echo ''",
