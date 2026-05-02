@@ -62,7 +62,7 @@ export function createSpeechController(
   // --- subscriber registry ---------------------------------------------
   const handlers = new Set<(event: SpeechEvent) => void>();
   function emit(event: SpeechEvent): void {
-    debugLog("controller:emit", event);
+    // debugLog("controller:emit", event);
     for (const h of handlers) h(event);
   }
 
@@ -127,24 +127,24 @@ export function createSpeechController(
           resolve?.();
         },
         onInterim(text) {
-          debugLog("controller:onInterim", { incomingText: text });
+          // debugLog("controller:onInterim", { incomingText: text });
           interimText = text;
           emitTranscript();
         },
         onFinal(text) {
-          debugLog("controller:onFinal", { incomingText: text });
+          // debugLog("controller:onFinal", { incomingText: text });
           finalText = text;
           interimText = "";
           emitTranscript();
         },
         onError(raw) {
           const mapped = mapRawError(raw);
-          debugLog("controller:onError", {
-            raw,
-            mapped,
-            collecting,
-            selfInitiatedAbort,
-          });
+          // debugLog("controller:onError", {
+          //   raw,
+          //   mapped,
+          //   collecting,
+          //   selfInitiatedAbort,
+          // });
           // Any error after a self-initiated stop/cancel is teardown noise
           // (spurious 'not-allowed' / 'aborted' that Chrome sometimes emits
           // during Web Speech API session teardown).

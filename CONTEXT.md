@@ -81,6 +81,51 @@ land; do use the agreed name when they do.
 - **Inbox** — the review surface for unprocessed Entries. An Entry is
   "in the Inbox" while `processedAt` is unset.
 
+### Auth
+
+- **Allowlist** — the comma-separated `EMAIL_ALLOWLIST` env var. The
+  authoritative source of who is allowed to sign in. Enforced at two
+  points: `databaseHooks.user.create.before` (rejected accounts never
+  get a `user` row) and `requireUser(event)` (re-checked on every
+  protected request, so removing an email takes effect next call with
+  no DB cleanup). Parser lives in `src/lib/server/allowlist.ts` and is
+  pure — case-insensitive, whitespace-tolerant, empty input means no
+  one is allowed.
+
+- **Session** — a better-auth session. 30-day expiry with 1-day sliding
+  `updateAge`. Cookie attributes: `HttpOnly`, `Secure` in prod,
+  `SameSite=Lax`, `Path=/`. The long window is chosen to be compatible
+  with a future offline-cached-cookie flow — a user returning after
+  two weeks offline still authenticates on their next online request.
+
+- **Protected Route** — any `/api/*` handler that calls
+  `requireUser(event)` from `$lib/server/auth`. Routes that are NOT
+  protected MUST be listed in `PUBLIC_API_ROUTES`
+  (`src/lib/server/auth-policy.ts`); the route-coverage test fails CI
+  otherwise. Currently public: `/api/debug-log` (dev log sink) and
+  the `/api/auth` namespace (better-auth manages its own state).
+
+- **AuthChip** — the top-right corner affordance inside the Capture
+  pane's `<section>`. Three states: loading (renders nothing to
+  prevent prerendered-shell flicker), signed-out (opens Google OAuth
+  via the client SDK), signed-in (avatar + popover with email and
+  sign-out). Lives at `src/lib/components/auth/AuthChip.svelte`.
+
+- **CurrentUser** — the narrowed user shape exposed to route
+  handlers and `load` functions: `{ id, email, name, image }`.
+  Produced by `requireUser` from better-auth's `User`. The narrow
+  shape *is* the contract — nothing outside `src/lib/server/auth.ts`
+  should import better-auth's `User` type. See invariant 12.
+
+- **authForEvent** — the single SvelteKit-aware seam between a
+  `RequestEvent` and a configured better-auth instance. Reads the
+  `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
+  `EMAIL_ALLOWLIST` env vars and derives `baseURL` from
+  `event.url.origin`. Every request-scoped caller (`requireUser`,
+  the `/api/auth/[...all]` mount, future hooks) goes through it so
+  adding a new auth secret is a one-file diff. Lives in
+  `src/lib/server/auth.ts`.
+
 ### Planned
 
 - **Bucket** *(planned)* — the top-level isolation boundary between
@@ -161,6 +206,35 @@ These are enforced today. Call them out in reviews if someone
 10. **`schemaVersion` bumps require a migration.** Don't silently
     reshape persisted entries; write the migration in
     `entries-store` and a test that loads the old shape.
+
+### Auth
+
+11. **Server-route protection is opt-in via `requireUser(event)`.**
+    Every `/api/*` route either calls `requireUser` or is listed in
+    `PUBLIC_API_ROUTES`. Enforced by
+    `src/lib/server/route-coverage.test.ts`, which walks the route
+    tree and fails CI on any unprotected, unlisted route. Adding a
+    new public route is a deliberate act: add the path to
+    `PUBLIC_API_ROUTES` and explain why in the PR.
+
+12. **`event.locals.user` is a narrowed `CurrentUser`, not the full
+    better-auth `User`.** `requireUser` projects the better-auth user
+    down to `{ id, email, name, image }` before writing to locals and
+    returning. This is the structural form of the old "never return
+    `locals.user` wholesale" rule: with the narrow shape there is
+    nothing dangerous to leak, so server `load` functions may return
+    `locals.user` directly. Widening `CurrentUser` is a deliberate
+    act — audit whether the new field is safe to send to the client.
+    `event.locals.session` is deliberately not populated; nothing
+    outside the auth gate needs it and keeping it off `locals`
+    removes a foot-gun.
+
+13. **Service-worker `fetch` replays must preserve credentials.**
+    Any SW that intercepts requests and re-issues them MUST use
+    `credentials: 'include'` (or equivalent) so the session cookie
+    survives interception. Forward-looking — no SW changes today —
+    but documented here because it is load-bearing for the future
+    offline-cached-cookie flow and easy to get wrong silently.
 
 ---
 
