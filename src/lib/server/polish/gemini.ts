@@ -26,17 +26,13 @@
  */
 
 import type { Category } from "$lib/utils/transcript-parser";
-import type { PolishFailureReason } from "$lib/polish/types";
+import type { PolishFailureReason, PolishResult } from "$lib/polish/types";
 import { buildPolishPrompt, PROMPT_VERSION } from "./prompt";
 
-export type PolishResult =
-  | { ok: true; polishedText: string; model: string; promptVersion: number }
-  | { ok: false; reason: "too-long" }
-  | { ok: false; reason: "bad-request" }
-  | { ok: false; reason: "rate-limited"; retryAfterMs?: number }
-  | { ok: false; reason: "quota-exhausted"; retryAfterMs?: number }
-  | { ok: false; reason: "timeout" }
-  | { ok: false; reason: "upstream"; status: number };
+// `PolishResult` is the shared wire contract — see `$lib/polish/types`.
+// Re-exported here so existing callers (server route, server tests)
+// keep working; new code should import from `$lib/polish/types`.
+export type { PolishResult };
 
 export interface GeminiClientOptions {
   apiKey: string;

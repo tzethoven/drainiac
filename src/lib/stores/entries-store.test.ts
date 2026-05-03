@@ -1,13 +1,67 @@
 import { describe, it, expect, vi } from "vitest";
 import { createEntriesStore } from "./entries-store.svelte";
 import { createFakeStorage } from "./fake-storage";
+import type {
+  PolishClient,
+  PolishRequest,
+} from "$lib/polish/polish-client";
+import type { PolishResult } from "$lib/polish/types";
 
-function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
-  return new Response(JSON.stringify(body), {
-    status: 200,
-    headers: { "content-type": "application/json" },
-    ...init,
-  });
+/**
+ * Minimal fake for the polish seam. Resolves the in-flight request
+ * with whatever `result` is set at the time of `resolve()`, so tests
+ * can (a) reason about what `PolishResult` the store sees, not what
+ * bytes crossed the wire, and (b) control in-flight timing for
+ * conflict tests without building `Response` objects.
+ */
+function createFakePolishClient(): {
+  client: PolishClient;
+  calls: PolishRequest[];
+  pending: number;
+  resolveNext(result: PolishResult): void;
+  resolveAllWith(result: PolishResult): void;
+} {
+  const calls: PolishRequest[] = [];
+  const resolvers: Array<(r: PolishResult) => void> = [];
+  return {
+    calls,
+    get pending() {
+      return resolvers.length;
+    },
+    client: {
+      polish(req) {
+        calls.push(req);
+        return new Promise<PolishResult>((resolve) => {
+          resolvers.push(resolve);
+        });
+      },
+    },
+    resolveNext(result) {
+      const r = resolvers.shift();
+      if (!r) throw new Error("no pending polish call to resolve");
+      r(result);
+    },
+    resolveAllWith(result) {
+      while (resolvers.length) resolvers.shift()!(result);
+    },
+  };
+}
+
+/** Eagerly-resolving fake — simpler for the synchronous happy path. */
+function immediateClient(result: PolishResult): {
+  client: PolishClient;
+  calls: PolishRequest[];
+} {
+  const calls: PolishRequest[] = [];
+  return {
+    calls,
+    client: {
+      async polish(req) {
+        calls.push(req);
+        return result;
+      },
+    },
+  };
 }
 
 function makeDeps() {
@@ -432,19 +486,13 @@ describe("entries-store", () => {
     it("happy path: writes the grouped polish field", async () => {
       const deps = makeDeps();
       deps.setNow(1_000);
-      const fetchImpl = vi.fn(
-        async (_url: string | URL | Request, _init?: RequestInit) =>
-          jsonResponse({
-            ok: true,
-            polishedText: "Buy milk.",
-            model: "test-model",
-            promptVersion: 1,
-          }),
-      );
-      const store = createEntriesStore({
-        ...deps,
-        fetchImpl: fetchImpl as unknown as typeof fetch,
+      const fake = immediateClient({
+        ok: true,
+        polishedText: "Buy milk.",
+        model: "test-model",
+        promptVersion: 1,
       });
+      const store = createEntriesStore({ ...deps, polishClient: fake.client });
       const entry = store.add({
         category: "todo",
         displayText: "buy milk",
@@ -462,29 +510,15 @@ describe("entries-store", () => {
         promptVersion: 1,
       });
       expect(store.isPolishing(entry.id)).toBe(false);
-      expect(fetchImpl).toHaveBeenCalledTimes(1);
-      const [url, init] = fetchImpl.mock.calls[0] as [
-        string,
-        RequestInit,
-      ];
-      expect(url).toBe("/api/polish");
-      const body = JSON.parse(String(init.body));
-      expect(body).toEqual({
-        rawTranscript: "todo buy milk",
-        category: "todo",
-      });
+      expect(fake.calls).toEqual([
+        { rawTranscript: "todo buy milk", category: "todo" },
+      ]);
     });
 
     it("isPolishing(id) is true while the request is in flight", async () => {
       const deps = makeDeps();
-      let resolve!: (r: Response) => void;
-      const fetchImpl = vi.fn(
-        () => new Promise<Response>((r) => (resolve = r)),
-      );
-      const store = createEntriesStore({
-        ...deps,
-        fetchImpl: fetchImpl as unknown as typeof fetch,
-      });
+      const fake = createFakePolishClient();
+      const store = createEntriesStore({ ...deps, polishClient: fake.client });
       const entry = store.add({
         category: "todo",
         displayText: "x",
@@ -494,28 +528,15 @@ describe("entries-store", () => {
       const promise = store.polish(entry.id);
       expect(store.isPolishing(entry.id)).toBe(true);
 
-      resolve(
-        jsonResponse({
-          ok: true,
-          polishedText: "X.",
-          model: "m",
-          promptVersion: 1,
-        }),
-      );
+      fake.resolveNext({ ok: true, polishedText: "X.", model: "m", promptVersion: 1 });
       await promise;
       expect(store.isPolishing(entry.id)).toBe(false);
     });
 
     it("is a no-op when already polishing", async () => {
       const deps = makeDeps();
-      let resolve!: (r: Response) => void;
-      const fetchImpl = vi.fn(
-        () => new Promise<Response>((r) => (resolve = r)),
-      );
-      const store = createEntriesStore({
-        ...deps,
-        fetchImpl: fetchImpl as unknown as typeof fetch,
-      });
+      const fake = createFakePolishClient();
+      const store = createEntriesStore({ ...deps, polishClient: fake.client });
       const entry = store.add({
         category: "todo",
         displayText: "x",
@@ -524,33 +545,21 @@ describe("entries-store", () => {
 
       const first = store.polish(entry.id);
       await store.polish(entry.id); // second call no-ops immediately
-      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect(fake.calls).toHaveLength(1);
 
-      resolve(
-        jsonResponse({
-          ok: true,
-          polishedText: "X.",
-          model: "m",
-          promptVersion: 1,
-        }),
-      );
+      fake.resolveNext({ ok: true, polishedText: "X.", model: "m", promptVersion: 1 });
       await first;
     });
 
     it("is a no-op when the entry already has polish set", async () => {
       const deps = makeDeps();
-      const fetchImpl = vi.fn(async () =>
-        jsonResponse({
-          ok: true,
-          polishedText: "First.",
-          model: "m",
-          promptVersion: 1,
-        }),
-      );
-      const store = createEntriesStore({
-        ...deps,
-        fetchImpl: fetchImpl as unknown as typeof fetch,
+      const fake = immediateClient({
+        ok: true,
+        polishedText: "First.",
+        model: "m",
+        promptVersion: 1,
       });
+      const store = createEntriesStore({ ...deps, polishClient: fake.client });
       const entry = store.add({
         category: "todo",
         displayText: "x",
@@ -558,21 +567,15 @@ describe("entries-store", () => {
       });
 
       await store.polish(entry.id);
-      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect(fake.calls).toHaveLength(1);
       await store.polish(entry.id); // second call no-ops — already polished
-      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect(fake.calls).toHaveLength(1);
     });
 
     it("edit-during-flight discards the eventual response", async () => {
       const deps = makeDeps();
-      let resolve!: (r: Response) => void;
-      const fetchImpl = vi.fn(
-        () => new Promise<Response>((r) => (resolve = r)),
-      );
-      const store = createEntriesStore({
-        ...deps,
-        fetchImpl: fetchImpl as unknown as typeof fetch,
-      });
+      const fake = createFakePolishClient();
+      const store = createEntriesStore({ ...deps, polishClient: fake.client });
       const entry = store.add({
         category: "todo",
         displayText: "x",
@@ -583,14 +586,12 @@ describe("entries-store", () => {
       store.update(entry.id, { displayText: "edited" });
       expect(store.isPolishing(entry.id)).toBe(false);
 
-      resolve(
-        jsonResponse({
-          ok: true,
-          polishedText: "Should be discarded.",
-          model: "m",
-          promptVersion: 1,
-        }),
-      );
+      fake.resolveNext({
+        ok: true,
+        polishedText: "Should be discarded.",
+        model: "m",
+        promptVersion: 1,
+      });
       await promise;
 
       expect(store.entries[0].polish).toBeNull();
@@ -599,14 +600,8 @@ describe("entries-store", () => {
 
     it("delete-during-flight discards the eventual response", async () => {
       const deps = makeDeps();
-      let resolve!: (r: Response) => void;
-      const fetchImpl = vi.fn(
-        () => new Promise<Response>((r) => (resolve = r)),
-      );
-      const store = createEntriesStore({
-        ...deps,
-        fetchImpl: fetchImpl as unknown as typeof fetch,
-      });
+      const fake = createFakePolishClient();
+      const store = createEntriesStore({ ...deps, polishClient: fake.client });
       const entry = store.add({
         category: "todo",
         displayText: "x",
@@ -616,52 +611,27 @@ describe("entries-store", () => {
       const promise = store.polish(entry.id);
       store.remove(entry.id);
 
-      resolve(
-        jsonResponse({
-          ok: true,
-          polishedText: "Should be discarded.",
-          model: "m",
-          promptVersion: 1,
-        }),
-      );
+      fake.resolveNext({
+        ok: true,
+        polishedText: "Should be discarded.",
+        model: "m",
+        promptVersion: 1,
+      });
       await promise;
 
       expect(store.entries).toHaveLength(0);
     });
 
-    it("calls onPolishError and leaves the entry unchanged on network failure", async () => {
+    it("calls onPolishError and leaves the entry unchanged on upstream failure", async () => {
+      // The adapter converts network throws to `upstream`. From the
+      // store's perspective there's no difference; all it sees is a
+      // typed `PolishResult`.
       const deps = makeDeps();
-      const fetchImpl = vi.fn(async () => {
-        throw new Error("boom");
-      });
+      const fake = immediateClient({ ok: false, reason: "upstream", status: 0 });
       const onPolishError = vi.fn();
       const store = createEntriesStore({
         ...deps,
-        fetchImpl: fetchImpl as unknown as typeof fetch,
-        onPolishError,
-      });
-      const entry = store.add({
-        category: "todo",
-        displayText: "x",
-        rawTranscript: "todo x",
-      });
-
-      await store.polish(entry.id);
-
-      expect(onPolishError).toHaveBeenCalledTimes(1);
-      expect(store.isPolishing(entry.id)).toBe(false);
-      expect(store.entries[0].polish).toBeNull();
-    });
-
-    it("calls onPolishError when response.ok is false", async () => {
-      const deps = makeDeps();
-      const fetchImpl = vi.fn(async () =>
-        jsonResponse({ ok: false, reason: "upstream", status: 500 }, { status: 502 }),
-      );
-      const onPolishError = vi.fn();
-      const store = createEntriesStore({
-        ...deps,
-        fetchImpl: fetchImpl as unknown as typeof fetch,
+        polishClient: fake.client,
         onPolishError,
       });
       const entry = store.add({
@@ -673,18 +643,17 @@ describe("entries-store", () => {
       await store.polish(entry.id);
 
       expect(onPolishError).toHaveBeenCalledWith("upstream");
+      expect(store.isPolishing(entry.id)).toBe(false);
       expect(store.entries[0].polish).toBeNull();
     });
 
-    it("propagates the server's reason literal to onPolishError (rate-limited)", async () => {
+    it("routes { ok: false; reason: 'rate-limited' } to onPolishError('rate-limited')", async () => {
       const deps = makeDeps();
-      const fetchImpl = vi.fn(async () =>
-        jsonResponse({ ok: false, reason: "rate-limited" }, { status: 429 }),
-      );
+      const fake = immediateClient({ ok: false, reason: "rate-limited" });
       const onPolishError = vi.fn();
       const store = createEntriesStore({
         ...deps,
-        fetchImpl: fetchImpl as unknown as typeof fetch,
+        polishClient: fake.client,
         onPolishError,
       });
       const entry = store.add({
@@ -699,18 +668,17 @@ describe("entries-store", () => {
       expect(store.isPolishing(entry.id)).toBe(false);
     });
 
-    it("forwards retryAfterMs to onPolishError when the server sent it", async () => {
+    it("forwards retryAfterMs to onPolishError when present on the result", async () => {
       const deps = makeDeps();
-      const fetchImpl = vi.fn(async () =>
-        jsonResponse(
-          { ok: false, reason: "rate-limited", retryAfterMs: 2000 },
-          { status: 429 },
-        ),
-      );
+      const fake = immediateClient({
+        ok: false,
+        reason: "rate-limited",
+        retryAfterMs: 2000,
+      });
       const onPolishError = vi.fn();
       const store = createEntriesStore({
         ...deps,
-        fetchImpl: fetchImpl as unknown as typeof fetch,
+        polishClient: fake.client,
         onPolishError,
       });
       const entry = store.add({
@@ -724,22 +692,21 @@ describe("entries-store", () => {
       expect(onPolishError).toHaveBeenCalledWith("rate-limited", { retryAfterMs: 2000 });
     });
 
-    it("propagates timeout / quota-exhausted / too-long / bad-request reasons", async () => {
-      const cases: Array<{ reason: string; status: number }> = [
-        { reason: "timeout", status: 504 },
-        { reason: "quota-exhausted", status: 429 },
-        { reason: "too-long", status: 400 },
-        { reason: "bad-request", status: 400 },
+    it("routes each failure reason straight through to onPolishError", async () => {
+      const cases: PolishResult[] = [
+        { ok: false, reason: "timeout" },
+        { ok: false, reason: "quota-exhausted" },
+        { ok: false, reason: "too-long" },
+        { ok: false, reason: "bad-request" },
+        { ok: false, reason: "upstream", status: 500 },
       ];
-      for (const { reason, status } of cases) {
+      for (const result of cases) {
         const deps = makeDeps();
-        const fetchImpl = vi.fn(async () =>
-          jsonResponse({ ok: false, reason }, { status }),
-        );
+        const fake = immediateClient(result);
         const onPolishError = vi.fn();
         const store = createEntriesStore({
           ...deps,
-          fetchImpl: fetchImpl as unknown as typeof fetch,
+          polishClient: fake.client,
           onPolishError,
         });
         const entry = store.add({
@@ -748,39 +715,23 @@ describe("entries-store", () => {
           rawTranscript: "todo x",
         });
         await store.polish(entry.id);
-        expect(onPolishError).toHaveBeenCalledWith(reason);
+        if (result.ok) continue;
+        expect(onPolishError).toHaveBeenCalledWith(result.reason);
       }
     });
 
-    it("coerces unknown reason strings to 'upstream'", async () => {
+    it("short-circuits oversized transcripts without calling the client", async () => {
       const deps = makeDeps();
-      const fetchImpl = vi.fn(async () =>
-        jsonResponse({ ok: false, reason: "teapot" }, { status: 418 }),
-      );
+      const fake = immediateClient({
+        ok: true,
+        polishedText: "x",
+        model: "m",
+        promptVersion: 1,
+      });
       const onPolishError = vi.fn();
       const store = createEntriesStore({
         ...deps,
-        fetchImpl: fetchImpl as unknown as typeof fetch,
-        onPolishError,
-      });
-      const entry = store.add({
-        category: "todo",
-        displayText: "x",
-        rawTranscript: "todo x",
-      });
-      await store.polish(entry.id);
-      expect(onPolishError).toHaveBeenCalledWith("upstream");
-    });
-
-    it("short-circuits oversized transcripts without calling fetch", async () => {
-      const deps = makeDeps();
-      const fetchImpl = vi.fn(async () =>
-        jsonResponse({ ok: true, polishedText: "x", model: "m", promptVersion: 1 }),
-      );
-      const onPolishError = vi.fn();
-      const store = createEntriesStore({
-        ...deps,
-        fetchImpl: fetchImpl as unknown as typeof fetch,
+        polishClient: fake.client,
         onPolishError,
       });
       const entry = store.add({
@@ -791,7 +742,7 @@ describe("entries-store", () => {
 
       await store.polish(entry.id);
 
-      expect(fetchImpl).not.toHaveBeenCalled();
+      expect(fake.calls).toHaveLength(0);
       expect(onPolishError).toHaveBeenCalledWith("too-long");
       expect(store.isPolishing(entry.id)).toBe(false);
       expect(store.entries[0].polish).toBeNull();
@@ -799,20 +750,20 @@ describe("entries-store", () => {
 
     it("does not short-circuit at exactly the 4000-char limit", async () => {
       const deps = makeDeps();
-      const fetchImpl = vi.fn(async () =>
-        jsonResponse({ ok: true, polishedText: "ok", model: "m", promptVersion: 1 }),
-      );
-      const store = createEntriesStore({
-        ...deps,
-        fetchImpl: fetchImpl as unknown as typeof fetch,
+      const fake = immediateClient({
+        ok: true,
+        polishedText: "ok",
+        model: "m",
+        promptVersion: 1,
       });
+      const store = createEntriesStore({ ...deps, polishClient: fake.client });
       const entry = store.add({
         category: "todo",
         displayText: "x",
         rawTranscript: "a".repeat(4000),
       });
       await store.polish(entry.id);
-      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect(fake.calls).toHaveLength(1);
     });
   });
 

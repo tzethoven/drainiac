@@ -5,6 +5,10 @@ import {
   MAX_POLISH_TRANSCRIPT_CHARS,
   type PolishFailureReason,
 } from "$lib/polish/types";
+import {
+  createHttpPolishClient,
+  type PolishClient,
+} from "$lib/polish/polish-client";
 
 /**
  * Grouped polish metadata. All four fields move as one — CONTEXT.md
@@ -68,8 +72,12 @@ export interface EntriesStoreOptions {
   now?: () => number;
   idFactory?: () => string;
   storageKey?: string;
-  /** Override for tests. Defaults to global `fetch`. */
-  fetchImpl?: typeof fetch;
+  /**
+   * HTTP client for `/api/polish`. Tests inject a `FakePolishClient`
+   * returning typed `PolishResult` values; production uses the
+   * default `createHttpPolishClient()` against global `fetch`.
+   */
+  polishClient?: PolishClient;
   /**
    * Optional hook called when the polish request fails. The `reason`
    * is the server-taxonomy discriminant (see `$lib/polish/types`) so
@@ -116,7 +124,7 @@ export function createEntriesStore(
   const storage = options.storage;
   const storageKey = options.storageKey ?? "memento:entries";
 
-  const fetchImpl = options.fetchImpl ?? ((...args) => fetch(...args));
+  const polishClient = options.polishClient ?? createHttpPolishClient();
   const onPolishError = options.onPolishError;
 
   const loaded = loadInitial(storage, storageKey);
@@ -210,74 +218,29 @@ export function createEntriesStore(
     }
 
     polishingIds.add(id);
-    const { rawTranscript, category } = entry;
-
-    let response: Response;
-    try {
-      response = await fetchImpl("/api/polish", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ rawTranscript, category }),
-      });
-    } catch {
-      // Network throw — no response, so we can't be more specific than
-      // `upstream`. (Timeouts originate server-side in slice #4 and
-      // come back as a real 504 body, not a client-side throw.)
-      if (polishingIds.delete(id)) onPolishError?.("upstream");
-      return;
-    }
+    const result = await polishClient.polish({
+      rawTranscript: entry.rawTranscript,
+      category: entry.category,
+    });
 
     // Entry was edited or deleted while the request was in flight:
-    // discard the response silently.
-    if (!polishingIds.has(id)) return;
+    // discard the response silently. `update` / `remove` both
+    // `polishingIds.delete(id)` unconditionally, so membership here
+    // means "still the same in-flight request we started above".
+    if (!polishingIds.delete(id)) return;
 
-    let payload: unknown;
-    try {
-      payload = await response.json();
-    } catch {
-      if (polishingIds.delete(id)) onPolishError?.("upstream");
+    if (result.ok) {
+      applyPolishResult(id, result.polishedText, result.model, result.promptVersion);
       return;
     }
 
-    // Re-check: the response parse is async too.
-    if (!polishingIds.has(id)) return;
-
-    if (!isObject(payload)) {
-      polishingIds.delete(id);
-      onPolishError?.("upstream");
-      return;
-    }
-
-    if (payload.ok === true) {
-      const { polishedText, model, promptVersion } = payload as {
-        polishedText: unknown;
-        model: unknown;
-        promptVersion: unknown;
-      };
-      if (
-        typeof polishedText !== "string" ||
-        typeof model !== "string" ||
-        typeof promptVersion !== "number"
-      ) {
-        polishingIds.delete(id);
-        onPolishError?.("upstream");
-        return;
-      }
-      applyPolishResult(id, polishedText, model, promptVersion);
-      polishingIds.delete(id);
-      return;
-    }
-
-    // `ok: false` branch. Trust the server's `reason` literal when it
-    // matches the taxonomy; anything else falls back to `upstream`.
-    polishingIds.delete(id);
-    const reason = coerceReason(payload.reason);
-    const retryAfterMs =
-      typeof payload.retryAfterMs === "number" ? payload.retryAfterMs : undefined;
-    if (retryAfterMs !== undefined) {
-      onPolishError?.(reason, { retryAfterMs });
+    if (
+      (result.reason === "rate-limited" || result.reason === "quota-exhausted") &&
+      result.retryAfterMs !== undefined
+    ) {
+      onPolishError?.(result.reason, { retryAfterMs: result.retryAfterMs });
     } else {
-      onPolishError?.(reason);
+      onPolishError?.(result.reason);
     }
   }
 
@@ -328,26 +291,6 @@ function loadInitial(
   } catch {
     return { entries: [], changed: false };
   }
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object";
-}
-
-const KNOWN_REASONS: ReadonlySet<PolishFailureReason> = new Set([
-  "too-long",
-  "bad-request",
-  "rate-limited",
-  "quota-exhausted",
-  "timeout",
-  "upstream",
-]);
-
-/** Trust the server's `reason` when it's in the taxonomy; else `upstream`. */
-function coerceReason(reason: unknown): PolishFailureReason {
-  return typeof reason === "string" && KNOWN_REASONS.has(reason as PolishFailureReason)
-    ? (reason as PolishFailureReason)
-    : "upstream";
 }
 
 const ENTRIES_CONTEXT_KEY = Symbol("memento:entries-store");
