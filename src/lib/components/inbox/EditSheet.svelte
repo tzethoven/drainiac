@@ -16,10 +16,12 @@
 
   const store = getEntriesContext();
 
-  // Seed from the entry once, using effectiveText so polished entries
-  // pre-fill the input with their polished form. A fresh EditSheet is
-  // mounted per entry, so initial capture is intentional.
+  // Stage text and category locally; nothing is written to the
+  // store until Save. Cancel discards both. Seed from the entry
+  // once — a fresh EditSheet is mounted per entry, so initial
+  // capture is intentional.
   let value = $state(untrack(() => effectiveText(entry)));
+  let category = $state<Category>(untrack(() => entry.category));
 
   let textareaEl = $state<HTMLTextAreaElement | undefined>(undefined);
 
@@ -45,13 +47,18 @@
     { value: "idea", label: "Idea" },
   ];
 
-  function chooseCategory(category: Category) {
-    if (category === entry.category) return;
-    store.setCategory(entry.id, category);
+  function chooseCategory(next: Category) {
+    category = next;
   }
 
   function save() {
     if (blank) return;
+    // Commit staged changes. Order doesn't matter for invariants:
+    // `setCategory` doesn't touch polish, and `editText` runs its
+    // three-case logic against the store's current entry state.
+    if (category !== entry.category) {
+      store.setCategory(entry.id, category);
+    }
     // The three-case save logic (no-op / polish-clear / plain write)
     // lives inside `store.editText`, so the invariants are enforced
     // structurally and can't be bypassed by callers.
@@ -90,14 +97,14 @@
         <button
           type="button"
           role="radio"
-          aria-checked={entry.category === opt.value}
+          aria-checked={category === opt.value}
           class="text-xs uppercase tracking-[0.05em] px-3 py-1 rounded-sm border badge-{opt.value}"
-          class:bg-foreground={entry.category === opt.value}
-          class:text-background={entry.category === opt.value}
-          class:border-foreground={entry.category === opt.value}
-          class:bg-muted={entry.category !== opt.value}
-          class:text-muted-foreground={entry.category !== opt.value}
-          class:border-border={entry.category !== opt.value}
+          class:bg-foreground={category === opt.value}
+          class:text-background={category === opt.value}
+          class:border-foreground={category === opt.value}
+          class:bg-muted={category !== opt.value}
+          class:text-muted-foreground={category !== opt.value}
+          class:border-border={category !== opt.value}
           onclick={() => chooseCategory(opt.value)}
         >
           {opt.label}
