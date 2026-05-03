@@ -1,28 +1,37 @@
 import type { RequestHandler } from "./$types";
 import { json } from "@sveltejs/kit";
 import { env } from "$env/dynamic/private";
+import { z } from "zod";
 
 import { requireUser } from "$lib/server/auth";
+import { createGeminiClient } from "$lib/server/polish/gemini";
 import {
-  createGeminiClient,
+  MAX_POLISH_TRANSCRIPT_CHARS,
   type PolishResult,
-} from "$lib/server/polish/gemini";
-import { MAX_POLISH_TRANSCRIPT_CHARS } from "$lib/polish/types";
-import type { Category } from "$lib/utils/transcript-parser";
-
-const VALID_CATEGORIES: ReadonlySet<Category> = new Set([
-  "todo",
-  "note",
-  "idea",
-]);
+} from "$lib/polish/types";
 
 export const prerender = false;
+
+/**
+ * Shape-only pass: is this a well-formed polish request ignoring the
+ * length cap? A failure here is a `bad-request`. The length cap is
+ * checked as a second stage so an oversized-but-otherwise-valid body
+ * can be distinguished as `too-long`.
+ *
+ * We don't reuse `PolishRequestSchema` here because that schema bakes
+ * the length cap into the shape — which is correct for the type but
+ * conflates the two failure branches the wire contract separates.
+ */
+const RequestShapeSchema = z.object({
+  rawTranscript: z.string().min(1),
+  category: z.enum(["todo", "note", "idea"]),
+});
 
 /**
  * POST /api/polish — returns a polished form of `rawTranscript` for the
  * given `category`.
  *
- * Response contract (see `$lib/server/polish/gemini.ts` `PolishResult`):
+ * Response contract (see `$lib/polish/types` `PolishResultSchema`):
  *
  *   - `{ ok: true;  polishedText; model; promptVersion }`           200
  *   - `{ ok: false; reason: "too-long" }`                           400
@@ -46,30 +55,18 @@ export const POST: RequestHandler = async (event) => {
     return respond({ ok: false, reason: "bad-request" });
   }
 
-  const rawTranscript =
-    body && typeof body === "object" && "rawTranscript" in body
-      ? (body as { rawTranscript: unknown }).rawTranscript
-      : undefined;
-  const category =
-    body && typeof body === "object" && "category" in body
-      ? (body as { category: unknown }).category
-      : undefined;
-
-  // Shape + category validation first — a malformed body is a
-  // `bad-request`, not a `too-long`, even if the `rawTranscript` field
-  // happens to be an oversized string.
-  if (
-    typeof rawTranscript !== "string" ||
-    rawTranscript.length === 0 ||
-    typeof category !== "string" ||
-    !VALID_CATEGORIES.has(category as Category)
-  ) {
+  // Stage 1: shape + category. A malformed body is a `bad-request`,
+  // even if the `rawTranscript` field happens to be an oversized
+  // string.
+  const shape = RequestShapeSchema.safeParse(body);
+  if (!shape.success) {
     return respond({ ok: false, reason: "bad-request" });
   }
+  const { rawTranscript, category } = shape.data;
 
-  // Length guard runs *before* Gemini so oversized transcripts fail
-  // fast and cheaply. The client runs the same check pre-flight; this
-  // server check is the authoritative one.
+  // Stage 2: length guard. Runs *before* Gemini so oversized
+  // transcripts fail fast and cheaply. The client runs the same check
+  // pre-flight; this server check is the authoritative one.
   if (rawTranscript.length > MAX_POLISH_TRANSCRIPT_CHARS) {
     return respond({ ok: false, reason: "too-long" });
   }
@@ -83,10 +80,7 @@ export const POST: RequestHandler = async (event) => {
   }
 
   const client = createGeminiClient({ apiKey, model });
-  const result = await client.polish({
-    rawTranscript,
-    category: category as Category,
-  });
+  const result = await client.polish({ rawTranscript, category });
 
   return respond(result);
 };

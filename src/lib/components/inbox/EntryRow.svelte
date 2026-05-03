@@ -46,7 +46,7 @@
     activeDirection = "none";
     translateX = 0;
     // No-op if the entry is already polishing or already polished.
-    if (store.isPolishing(entry.id) || entry.polishedText != null) return;
+    if (store.isPolishing(entry.id) || entry.polish != null) return;
     // Haptic + visual pulse fire at gesture start, now that the gesture
     // does something worth confirming.
     triggerPulse();
@@ -135,7 +135,7 @@
   }
 
   function startCommitRight() {
-    store.update(entry.id, { done: !entry.done });
+    store.toggleDone(entry.id);
     startRebound();
   }
 
@@ -240,7 +240,7 @@
         class="shrink-0 mt-[3px] text-primary animate-pulse"
         aria-label="Polishing"
       />
-    {:else if entry.polishedText != null}
+    {:else if entry.polish != null}
       <Sparkles
         size={16}
         class="shrink-0 mt-[3px] text-primary"

@@ -5,7 +5,6 @@
   import { getEntriesContext } from "$lib/stores/entries-store.svelte";
   import { isBlank } from "$lib/utils/edit-text";
   import { effectiveText } from "$lib/utils/effective-text";
-  import { computeEditSave, REVERT_POLISH_PATCH } from "$lib/utils/edit-save";
   import type { Category } from "$lib/utils/transcript-parser";
 
   interface Props {
@@ -17,10 +16,12 @@
 
   const store = getEntriesContext();
 
-  // Seed from the entry once, using effectiveText so polished entries
-  // pre-fill the input with their polished form. A fresh EditSheet is
-  // mounted per entry, so initial capture is intentional.
+  // Stage text and category locally; nothing is written to the
+  // store until Save. Cancel discards both. Seed from the entry
+  // once — a fresh EditSheet is mounted per entry, so initial
+  // capture is intentional.
   let value = $state(untrack(() => effectiveText(entry)));
+  let category = $state<Category>(untrack(() => entry.category));
 
   let textareaEl = $state<HTMLTextAreaElement | undefined>(undefined);
 
@@ -46,28 +47,31 @@
     { value: "idea", label: "Idea" },
   ];
 
-  function chooseCategory(category: Category) {
-    if (category === entry.category) return;
-    store.update(entry.id, { category });
+  function chooseCategory(next: Category) {
+    category = next;
   }
 
   function save() {
     if (blank) return;
-    // Three-case logic lives in `computeEditSave` so it can be unit-
-    // tested without a component harness. `null` means "no write" —
-    // critically, this preserves a polished entry when the user opened
-    // the sheet only to re-read.
-    const patch = computeEditSave(value, entry);
-    if (patch) store.update(entry.id, patch);
+    // Commit staged changes. Order doesn't matter for invariants:
+    // `setCategory` doesn't touch polish, and `editText` runs its
+    // three-case logic against the store's current entry state.
+    if (category !== entry.category) {
+      store.setCategory(entry.id, category);
+    }
+    // The three-case save logic (no-op / polish-clear / plain write)
+    // lives inside `store.editText`, so the invariants are enforced
+    // structurally and can't be bypassed by callers.
+    store.editText(entry.id, value);
     onClose();
   }
 
-  const canRevert = $derived(entry.polishedText != null);
+  const canRevert = $derived(entry.polish != null);
 
   function revert() {
-    // Clear the four polish fields in one shot. `displayText` and
+    // Clear polish metadata in one shot. `displayText` and
     // `rawTranscript` are untouched — long-press can re-polish.
-    store.update(entry.id, { ...REVERT_POLISH_PATCH });
+    store.revertPolish(entry.id);
     onClose();
   }
 </script>
@@ -93,14 +97,14 @@
         <button
           type="button"
           role="radio"
-          aria-checked={entry.category === opt.value}
+          aria-checked={category === opt.value}
           class="text-xs uppercase tracking-[0.05em] px-3 py-1 rounded-sm border badge-{opt.value}"
-          class:bg-foreground={entry.category === opt.value}
-          class:text-background={entry.category === opt.value}
-          class:border-foreground={entry.category === opt.value}
-          class:bg-muted={entry.category !== opt.value}
-          class:text-muted-foreground={entry.category !== opt.value}
-          class:border-border={entry.category !== opt.value}
+          class:bg-foreground={category === opt.value}
+          class:text-background={category === opt.value}
+          class:border-foreground={category === opt.value}
+          class:bg-muted={category !== opt.value}
+          class:text-muted-foreground={category !== opt.value}
+          class:border-border={category !== opt.value}
           onclick={() => chooseCategory(opt.value)}
         >
           {opt.label}
