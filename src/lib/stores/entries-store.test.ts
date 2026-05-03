@@ -52,7 +52,7 @@ describe("entries-store", () => {
 
     expect(entry).toEqual({
       id: "id-1",
-      schemaVersion: 2,
+      schemaVersion: 3,
       category: "note",
       displayText: "Remember this.",
       rawTranscript: "note remember this",
@@ -60,10 +60,7 @@ describe("entries-store", () => {
       done: false,
       createdAt: 12_345,
       updatedAt: 12_345,
-      polishedText: null,
-      polishedAt: null,
-      polishedModel: null,
-      polishedPromptVersion: null,
+      polish: null,
     });
     expect("processedAt" in entry).toBe(false);
   });
@@ -101,7 +98,7 @@ describe("entries-store", () => {
     expect(second.entries).toHaveLength(1);
     expect(second.entries[0].displayText).toBe("Buy milk.");
     expect(second.entries[0].category).toBe("todo");
-    expect(second.entries[0].schemaVersion).toBe(2);
+    expect(second.entries[0].schemaVersion).toBe(3);
   });
 
   it("update() mutates allowed fields and bumps updatedAt without changing createdAt", () => {
@@ -128,7 +125,7 @@ describe("entries-store", () => {
     expect(updated.rawTranscript).toBe("todo buy milk");
   });
 
-  it("update() merges a polish-clearing patch (all four fields to null)", () => {
+  it("update() merges a polish-clearing patch (polish: null)", () => {
     const deps = makeDeps();
     deps.setNow(1_000);
     const store = createEntriesStore(deps);
@@ -138,31 +135,30 @@ describe("entries-store", () => {
       rawTranscript: "todo buy milk",
     });
 
-    // Simulate a prior polish by patching the four fields directly
-    // through the widened update signature.
+    // Simulate a prior polish by patching `polish` directly through
+    // the widened update signature.
     deps.setNow(2_000);
     store.update(entry.id, {
-      polishedText: "Buy milk.",
-      polishedAt: 2_000,
-      polishedModel: "test-model",
-      polishedPromptVersion: 1,
+      polish: {
+        text: "Buy milk.",
+        at: 2_000,
+        model: "test-model",
+        promptVersion: 1,
+      },
     });
-    expect(store.entries[0].polishedText).toBe("Buy milk.");
+    expect(store.entries[0].polish).toEqual({
+      text: "Buy milk.",
+      at: 2_000,
+      model: "test-model",
+      promptVersion: 1,
+    });
 
     // Now clear the polish via the same path (the revert operation).
     deps.setNow(3_000);
-    store.update(entry.id, {
-      polishedText: null,
-      polishedAt: null,
-      polishedModel: null,
-      polishedPromptVersion: null,
-    });
+    store.update(entry.id, { polish: null });
 
     const after = store.entries[0];
-    expect(after.polishedText).toBeNull();
-    expect(after.polishedAt).toBeNull();
-    expect(after.polishedModel).toBeNull();
-    expect(after.polishedPromptVersion).toBeNull();
+    expect(after.polish).toBeNull();
     expect(after.updatedAt).toBe(3_000);
     expect(after.displayText).toBe("buy milk");
     expect(after.rawTranscript).toBe("todo buy milk");
@@ -295,7 +291,7 @@ describe("entries-store", () => {
 
     expect(rehydrated).toEqual({
       id: entry.id,
-      schemaVersion: 2,
+      schemaVersion: 3,
       category: "todo",
       displayText: "Buy milk.",
       rawTranscript: "todo buy milk",
@@ -303,10 +299,7 @@ describe("entries-store", () => {
       done: true,
       createdAt: 1_000,
       updatedAt: 2_000,
-      polishedText: null,
-      polishedAt: null,
-      polishedModel: null,
-      polishedPromptVersion: null,
+      polish: null,
     });
     expect("processedAt" in rehydrated).toBe(false);
   });
@@ -340,7 +333,7 @@ describe("entries-store", () => {
   });
 
   describe("migration on load", () => {
-    it("upgrades a v1-shaped localStorage blob to v2 entries in the store", () => {
+    it("upgrades a v1-shaped localStorage blob straight to v3 entries in the store", () => {
       const deps = makeDeps();
       const v1 = {
         id: "legacy-1",
@@ -358,14 +351,11 @@ describe("entries-store", () => {
       const store = createEntriesStore(deps);
 
       expect(store.entries).toHaveLength(1);
-      expect(store.entries[0].schemaVersion).toBe(2);
-      expect(store.entries[0].polishedText).toBeNull();
-      expect(store.entries[0].polishedAt).toBeNull();
-      expect(store.entries[0].polishedModel).toBeNull();
-      expect(store.entries[0].polishedPromptVersion).toBeNull();
+      expect(store.entries[0].schemaVersion).toBe(3);
+      expect(store.entries[0].polish).toBeNull();
     });
 
-    it("eagerly persists v1 → v2 upgrade back to storage on first load", () => {
+    it("eagerly persists v1 → v3 upgrade back to storage on first load", () => {
       const deps = makeDeps();
       const v1 = {
         id: "legacy-1",
@@ -384,18 +374,18 @@ describe("entries-store", () => {
 
       const persisted = JSON.parse(deps.storage.getItem("memento:entries")!);
       expect(persisted).toHaveLength(1);
-      expect(persisted[0].schemaVersion).toBe(2);
-      expect(persisted[0].polishedText).toBeNull();
+      expect(persisted[0].schemaVersion).toBe(3);
+      expect(persisted[0].polish).toBeNull();
     });
 
-    it("does not rewrite storage when every entry is already v2", () => {
+    it("does not rewrite storage when every entry is already v3", () => {
       const deps = makeDeps();
       const store1 = createEntriesStore(deps);
       store1.add({ category: "todo", displayText: "A.", rawTranscript: "todo a" });
 
       const blobBefore = deps.storage.getItem("memento:entries")!;
 
-      // Spy on setItem to ensure no write happens on pure-v2 load.
+      // Spy on setItem to ensure no write happens on pure-v3 load.
       let writes = 0;
       const originalSetItem = deps.storage.setItem.bind(deps.storage);
       deps.storage.setItem = (k: string, v: string) => {
@@ -439,7 +429,7 @@ describe("entries-store", () => {
   });
 
   describe("polish()", () => {
-    it("happy path: writes the four polish fields", async () => {
+    it("happy path: writes the grouped polish field", async () => {
       const deps = makeDeps();
       deps.setNow(1_000);
       const fetchImpl = vi.fn(
@@ -465,10 +455,12 @@ describe("entries-store", () => {
       await store.polish(entry.id);
 
       const after = store.entries[0];
-      expect(after.polishedText).toBe("Buy milk.");
-      expect(after.polishedAt).toBe(2_000);
-      expect(after.polishedModel).toBe("test-model");
-      expect(after.polishedPromptVersion).toBe(1);
+      expect(after.polish).toEqual({
+        text: "Buy milk.",
+        at: 2_000,
+        model: "test-model",
+        promptVersion: 1,
+      });
       expect(store.isPolishing(entry.id)).toBe(false);
       expect(fetchImpl).toHaveBeenCalledTimes(1);
       const [url, init] = fetchImpl.mock.calls[0] as [
@@ -545,7 +537,7 @@ describe("entries-store", () => {
       await first;
     });
 
-    it("is a no-op when the entry already has polishedText", async () => {
+    it("is a no-op when the entry already has polish set", async () => {
       const deps = makeDeps();
       const fetchImpl = vi.fn(async () =>
         jsonResponse({
@@ -601,7 +593,7 @@ describe("entries-store", () => {
       );
       await promise;
 
-      expect(store.entries[0].polishedText).toBeNull();
+      expect(store.entries[0].polish).toBeNull();
       expect(store.entries[0].displayText).toBe("edited");
     });
 
@@ -658,7 +650,7 @@ describe("entries-store", () => {
 
       expect(onPolishError).toHaveBeenCalledTimes(1);
       expect(store.isPolishing(entry.id)).toBe(false);
-      expect(store.entries[0].polishedText).toBeNull();
+      expect(store.entries[0].polish).toBeNull();
     });
 
     it("calls onPolishError when response.ok is false", async () => {
@@ -681,7 +673,7 @@ describe("entries-store", () => {
       await store.polish(entry.id);
 
       expect(onPolishError).toHaveBeenCalledWith("upstream");
-      expect(store.entries[0].polishedText).toBeNull();
+      expect(store.entries[0].polish).toBeNull();
     });
 
     it("propagates the server's reason literal to onPolishError (rate-limited)", async () => {
@@ -802,7 +794,7 @@ describe("entries-store", () => {
       expect(fetchImpl).not.toHaveBeenCalled();
       expect(onPolishError).toHaveBeenCalledWith("too-long");
       expect(store.isPolishing(entry.id)).toBe(false);
-      expect(store.entries[0].polishedText).toBeNull();
+      expect(store.entries[0].polish).toBeNull();
     });
 
     it("does not short-circuit at exactly the 4000-char limit", async () => {

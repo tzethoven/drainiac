@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { computeEditSave, REVERT_POLISH_PATCH } from "./edit-save";
-import type { Entry } from "$lib/stores/entries-store.svelte";
+import type { Entry, Polish } from "$lib/stores/entries-store.svelte";
 
 function makeEntry(overrides: Partial<Entry> = {}): Entry {
   return {
     id: "e1",
-    schemaVersion: 2,
+    schemaVersion: 3,
     category: "todo",
     displayText: "Buy milk.",
     rawTranscript: "todo buy milk",
@@ -13,10 +13,17 @@ function makeEntry(overrides: Partial<Entry> = {}): Entry {
     done: false,
     createdAt: 1_000,
     updatedAt: 1_000,
-    polishedText: null,
-    polishedAt: null,
-    polishedModel: null,
-    polishedPromptVersion: null,
+    polish: null,
+    ...overrides,
+  };
+}
+
+function makePolish(overrides: Partial<Polish> = {}): Polish {
+  return {
+    text: "Buy milk.",
+    at: 2_000,
+    model: "test-model",
+    promptVersion: 1,
     ...overrides,
   };
 }
@@ -28,13 +35,10 @@ describe("computeEditSave", () => {
       expect(computeEditSave("Buy milk.", entry)).toBeNull();
     });
 
-    it("returns null when newText equals polishedText on a polished entry", () => {
+    it("returns null when newText equals polish.text on a polished entry", () => {
       const entry = makeEntry({
         displayText: "buy milk",
-        polishedText: "Buy milk.",
-        polishedAt: 2_000,
-        polishedModel: "test-model",
-        polishedPromptVersion: 1,
+        polish: makePolish({ text: "Buy milk." }),
       });
       expect(computeEditSave("Buy milk.", entry)).toBeNull();
     });
@@ -51,33 +55,22 @@ describe("computeEditSave", () => {
   });
 
   describe("case 2: input differs on a polished entry", () => {
-    it("returns a patch that writes displayText and clears all four polish fields", () => {
+    it("returns a patch that writes displayText and clears polish in one shot", () => {
       const entry = makeEntry({
         displayText: "buy milk",
-        polishedText: "Buy milk.",
-        polishedAt: 2_000,
-        polishedModel: "test-model",
-        polishedPromptVersion: 1,
+        polish: makePolish({ text: "Buy milk." }),
       });
 
       const patch = computeEditSave("Buy oat milk.", entry);
 
       expect(patch).toEqual({
         displayText: "Buy oat milk.",
-        polishedText: null,
-        polishedAt: null,
-        polishedModel: null,
-        polishedPromptVersion: null,
+        polish: null,
       });
     });
 
     it("normalizes the saved displayText", () => {
-      const entry = makeEntry({
-        polishedText: "Buy milk.",
-        polishedAt: 2_000,
-        polishedModel: "m",
-        polishedPromptVersion: 1,
-      });
+      const entry = makeEntry({ polish: makePolish() });
       const patch = computeEditSave("  buy   oat milk  ", entry);
       expect(patch).toMatchObject({ displayText: "buy oat milk" });
     });
@@ -90,24 +83,16 @@ describe("computeEditSave", () => {
       expect(patch).toEqual({ displayText: "Buy oat milk." });
     });
 
-    it("does not include polish-clearing fields (pre-polish behaviour)", () => {
+    it("does not include a polish field (pre-polish behaviour)", () => {
       const entry = makeEntry({ displayText: "Buy milk." });
       const patch = computeEditSave("Buy oat milk.", entry);
-      expect(patch).not.toHaveProperty("polishedText");
-      expect(patch).not.toHaveProperty("polishedAt");
-      expect(patch).not.toHaveProperty("polishedModel");
-      expect(patch).not.toHaveProperty("polishedPromptVersion");
+      expect(patch).not.toHaveProperty("polish");
     });
   });
 });
 
 describe("REVERT_POLISH_PATCH", () => {
-  it("clears exactly the four polish metadata fields", () => {
-    expect(REVERT_POLISH_PATCH).toEqual({
-      polishedText: null,
-      polishedAt: null,
-      polishedModel: null,
-      polishedPromptVersion: null,
-    });
+  it("clears the polish field in one shot", () => {
+    expect(REVERT_POLISH_PATCH).toEqual({ polish: null });
   });
 });

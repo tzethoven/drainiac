@@ -5,7 +5,7 @@ import type { Entry } from "$lib/stores/entries-store.svelte";
 function entry(partial: Partial<Entry> & { id: string; createdAt: number }): Entry {
   return {
     id: partial.id,
-    schemaVersion: 2,
+    schemaVersion: 3,
     category: partial.category ?? "note",
     displayText: partial.displayText ?? "x",
     rawTranscript: partial.rawTranscript ?? "x",
@@ -13,10 +13,7 @@ function entry(partial: Partial<Entry> & { id: string; createdAt: number }): Ent
     done: partial.done ?? false,
     createdAt: partial.createdAt,
     updatedAt: partial.createdAt,
-    polishedText: null,
-    polishedAt: null,
-    polishedModel: null,
-    polishedPromptVersion: null,
+    polish: null,
   };
 }
 

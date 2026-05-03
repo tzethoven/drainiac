@@ -6,9 +6,26 @@ import {
   type PolishFailureReason,
 } from "$lib/polish/types";
 
+/**
+ * Grouped polish metadata. All four fields move as one — CONTEXT.md
+ * invariant "set together, cleared together" is now structural:
+ * either `entry.polish` is `null` (unpolished or reverted) or every
+ * field is populated. No partial states are representable.
+ */
+export interface Polish {
+  /** AI-polished form of the entry's body. */
+  text: string;
+  /** Timestamp of the polish. */
+  at: number;
+  /** Gemini model id used, e.g. `gemini-3.1-flash-lite-preview`. */
+  model: string;
+  /** Prompt template version used. */
+  promptVersion: number;
+}
+
 export interface Entry {
   id: string;
-  schemaVersion: 2;
+  schemaVersion: 3;
   category: Category;
   displayText: string;
   rawTranscript: string;
@@ -18,29 +35,23 @@ export interface Entry {
   updatedAt: number;
   processedAt?: number;
   warning?: "partial-transcription";
-  /** AI-polished form of the entry. `null` when not polished or reverted. */
-  polishedText: string | null;
-  /** Timestamp of the last successful polish. `null` when not polished. */
-  polishedAt: number | null;
-  /** Gemini model id used for the polish, e.g. `gemini-3.1-flash-lite-preview`. */
-  polishedModel: string | null;
-  /** Prompt template version used for the polish. */
-  polishedPromptVersion: number | null;
+  /**
+   * Grouped polish metadata. `null` when the entry has not been
+   * polished or has been reverted. See `Polish`.
+   */
+  polish: Polish | null;
 }
 
 /**
  * Fields the app is allowed to patch through `update()`. User-editable
- * content (`displayText`, `category`, `done`) plus the four polish
- * metadata fields, which are patched together when an edit clears a
- * polish or the user reverts to original. `updatedAt` is always
- * stamped by the store itself.
+ * content (`displayText`, `category`, `done`) plus `polish`, which is
+ * patched as a single value when an edit clears a polish or the user
+ * reverts to original. `updatedAt` is always stamped by the store
+ * itself.
  */
 export type EntryUpdatePatch = Partial<
   Pick<Entry, "displayText" | "category" | "done"> & {
-    polishedText: string | null;
-    polishedAt: number | null;
-    polishedModel: string | null;
-    polishedPromptVersion: number | null;
+    polish: Polish | null;
   }
 >;
 
@@ -86,8 +97,8 @@ export interface EntriesStore {
   clearDone(): void;
   /**
    * Trigger an AI polish for the given entry. No-op if the entry is
-   * already polishing or already has `polishedText`. On success the
-   * four polish fields are applied via the normal update path; on
+   * already polishing or already has `polish` set. On success the
+   * grouped `polish` field is applied via the normal update path; on
    * failure `onPolishError` is called and the entry is left unchanged.
    * If `update(id, …)` or `remove(id)` is called while the request is
    * in flight, the eventual response is discarded silently.
@@ -138,10 +149,7 @@ export function createEntriesStore(
       done: false,
       createdAt: ts,
       updatedAt: ts,
-      polishedText: null,
-      polishedAt: null,
-      polishedModel: null,
-      polishedPromptVersion: null,
+      polish: null,
       ...(input.warning ? { warning: input.warning } : {}),
     };
     entries = [entry, ...entries];
@@ -177,13 +185,11 @@ export function createEntriesStore(
     const idx = entries.findIndex((e) => e.id === id);
     if (idx === -1) return;
     const current = entries[idx];
+    const ts = now();
     const next: Entry = {
       ...current,
-      polishedText,
-      polishedAt: now(),
-      polishedModel: model,
-      polishedPromptVersion: promptVersion,
-      updatedAt: now(),
+      polish: { text: polishedText, at: ts, model, promptVersion },
+      updatedAt: ts,
     };
     entries = [...entries.slice(0, idx), next, ...entries.slice(idx + 1)];
     persist();
@@ -193,7 +199,7 @@ export function createEntriesStore(
     if (polishingIds.has(id)) return;
     const entry = entries.find((e) => e.id === id);
     if (!entry) return;
-    if (entry.polishedText != null) return;
+    if (entry.polish != null) return;
 
     // Client-side length guard: a cheap UX win that avoids the network
     // round-trip for transcripts the server would reject anyway. The

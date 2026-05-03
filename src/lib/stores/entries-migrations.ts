@@ -1,9 +1,9 @@
-import type { Entry } from "./entries-store.svelte";
+import type { Entry, Polish } from "./entries-store.svelte";
 
 /**
  * Current Entry schema version. Bump together with a migration step.
  */
-export const CURRENT_SCHEMA_VERSION = 2 as const;
+export const CURRENT_SCHEMA_VERSION = 3 as const;
 
 /**
  * Pure migration from any historical Entry shape to the current
@@ -25,13 +25,15 @@ export function migrate(raw: unknown): Entry | null {
   if (typeof obj.id !== "string") return null;
   const version = obj.schemaVersion;
 
-  if (version === 2) {
-    // Already current — trust the shape. Callers that persist after
-    // migration will re-normalize on next write anyway.
+  if (version === 3) {
+    // Already current — trust the shape.
     return obj as unknown as Entry;
   }
+  if (version === 2) {
+    return migrateV2ToV3(obj as unknown as EntryV2);
+  }
   if (version === 1) {
-    return migrateV1ToV2(obj as unknown as EntryV1);
+    return migrateV2ToV3(migrateV1ToV2(obj as unknown as EntryV1));
   }
   return null;
 }
@@ -82,7 +84,25 @@ interface EntryV1 {
   warning?: Entry["warning"];
 }
 
-function migrateV1ToV2(v1: EntryV1): Entry {
+interface EntryV2 {
+  id: string;
+  schemaVersion: 2;
+  category: Entry["category"];
+  displayText: string;
+  rawTranscript: string;
+  source: Entry["source"];
+  done: boolean;
+  createdAt: number;
+  updatedAt: number;
+  processedAt?: number;
+  warning?: Entry["warning"];
+  polishedText: string | null;
+  polishedAt: number | null;
+  polishedModel: string | null;
+  polishedPromptVersion: number | null;
+}
+
+function migrateV1ToV2(v1: EntryV1): EntryV2 {
   return {
     ...v1,
     schemaVersion: 2,
@@ -90,5 +110,43 @@ function migrateV1ToV2(v1: EntryV1): Entry {
     polishedAt: null,
     polishedModel: null,
     polishedPromptVersion: null,
+  };
+}
+
+/**
+ * Collapse the v2 polish quartet into the grouped `polish` field.
+ *
+ * The CONTEXT.md invariant says the quartet moves as one, so v2 data
+ * should never contain partial states in practice. We still defend
+ * against it: if any of the four fields is missing, we treat the
+ * entry as unpolished (`polish: null`). Only when all four are
+ * present and well-typed do we emit a populated `Polish` value.
+ */
+function migrateV2ToV3(v2: EntryV2): Entry {
+  const {
+    polishedText,
+    polishedAt,
+    polishedModel,
+    polishedPromptVersion,
+    ...rest
+  } = v2;
+
+  const polish: Polish | null =
+    typeof polishedText === "string" &&
+    typeof polishedAt === "number" &&
+    typeof polishedModel === "string" &&
+    typeof polishedPromptVersion === "number"
+      ? {
+          text: polishedText,
+          at: polishedAt,
+          model: polishedModel,
+          promptVersion: polishedPromptVersion,
+        }
+      : null;
+
+  return {
+    ...rest,
+    schemaVersion: 3,
+    polish,
   };
 }

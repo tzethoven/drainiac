@@ -1,17 +1,18 @@
 /**
  * Pure helper encapsulating `EditSheet`'s three-case save logic.
  *
- * See `.agents/issues/003-edit-and-revert-semantics.md`.
+ * See `.agents/issues/003-edit-and-revert-semantics.md` and
+ * `.agents/issues/005-group-polish-metadata-into-single-field.md`.
  *
  * Cases:
  *   1. Normalized input equals `effectiveText(entry)` → return `null`.
  *      The sheet must not bump `updatedAt` or clear polish metadata
  *      when the user opened it only to re-read.
- *   2. Input differs and `entry.polishedText != null` → return a patch
- *      that writes the new `displayText` and clears all four polish
- *      metadata fields. The edit becomes the canonical display.
- *   3. Input differs and `entry.polishedText == null` → return a patch
- *      with just `displayText` (pre-polish behaviour).
+ *   2. Input differs and `entry.polish != null` → return a patch that
+ *      writes the new `displayText` and clears `polish` in one shot.
+ *      The edit becomes the canonical display.
+ *   3. Input differs and `entry.polish == null` → return a patch with
+ *      just `displayText` (pre-polish behaviour).
  *
  * Blank inputs are callers' responsibility (EditSheet disables Save
  * while blank); we still return `null` for blank-after-normalize so
@@ -28,13 +29,7 @@ import { effectiveText } from "./effective-text";
 /** Fields that may be written by a save-path patch. */
 export type EditSavePatch =
   | { displayText: string }
-  | {
-      displayText: string;
-      polishedText: null;
-      polishedAt: null;
-      polishedModel: null;
-      polishedPromptVersion: null;
-    };
+  | { displayText: string; polish: null };
 
 export function computeEditSave(
   newText: string,
@@ -44,22 +39,11 @@ export function computeEditSave(
   const normalized = normalizeEditText(newText);
   if (normalized === effectiveText(entry)) return null;
 
-  if (entry.polishedText != null) {
-    return {
-      displayText: normalized,
-      polishedText: null,
-      polishedAt: null,
-      polishedModel: null,
-      polishedPromptVersion: null,
-    };
+  if (entry.polish != null) {
+    return { displayText: normalized, polish: null };
   }
   return { displayText: normalized };
 }
 
-/** Patch that clears the four polish metadata fields in one shot. */
-export const REVERT_POLISH_PATCH = {
-  polishedText: null,
-  polishedAt: null,
-  polishedModel: null,
-  polishedPromptVersion: null,
-} as const;
+/** Patch that clears polish metadata in one shot. */
+export const REVERT_POLISH_PATCH = { polish: null } as const;

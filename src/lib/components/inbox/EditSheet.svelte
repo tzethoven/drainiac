@@ -62,10 +62,10 @@
     onClose();
   }
 
-  const canRevert = $derived(entry.polishedText != null);
+  const canRevert = $derived(entry.polish != null);
 
   function revert() {
-    // Clear the four polish fields in one shot. `displayText` and
+    // Clear polish metadata in one shot. `displayText` and
     // `rawTranscript` are untouched — long-press can re-polish.
     store.update(entry.id, { ...REVERT_POLISH_PATCH });
     onClose();
