@@ -24,7 +24,7 @@
     //   wrangler secret put GOOGLE_CLIENT_SECRET
     //   wrangler secret put GEMINI_API_KEY
     "ORIGIN": "memento.tzethoven.worker.dev",
-    "EMAIL_ALLOWLIST": "tzethoven@gmail.com",
+    "EMAIL_ALLOWLIST": "tzethoven@gmail.com,bahati.lajoie@gmail.com",
     "GOOGLE_CLIENT_ID": "170024644447-7nvd1k02lpk0bdh96i55gmno21e4kcku.apps.googleusercontent.com",
     "GEMINI_MODEL": "gemini-3.1-flash-lite-preview",
   },

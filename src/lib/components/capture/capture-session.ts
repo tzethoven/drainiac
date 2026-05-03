@@ -204,7 +204,10 @@ function applyTermination(
   endReason: CaptureEndReason,
   opts: { micNeedsCancel: boolean },
 ): ReduceResult {
-  const result: CapturePolicyResult = capturePolicy(endReason, state.partialText);
+  const result: CapturePolicyResult = capturePolicy(
+    endReason,
+    state.partialText,
+  );
   const effects: SessionEffect[] = [];
 
   if (opts.micNeedsCancel) effects.push({ type: "cancelSpeech" });
@@ -212,7 +215,8 @@ function applyTermination(
   if (result.save) {
     const parsed = parse(state.partialText);
     effects.push({ type: "saveEntry", parsed, warning: result.warning });
-    if (result.toast) effects.push({ type: "showToast", message: result.toast });
+    if (result.toast)
+      effects.push({ type: "showToast", message: result.toast });
     // Stay in `recording` until `entrySaved` arrives. The adapter dispatches
     // it synchronously today (see ADR-0001 "effect-then-event"); when storage
     // goes async this gives us a natural place to insert a `saving` phase.
@@ -236,4 +240,3 @@ function deriveEndReason(state: SessionState): CaptureEndReason {
 function noop(state: SessionState): ReduceResult {
   return { state, effects: [] };
 }
-
