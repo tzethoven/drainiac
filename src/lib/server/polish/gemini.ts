@@ -27,6 +27,7 @@
 
 import type { Category } from "$lib/utils/transcript-parser";
 import type { PolishFailureReason, PolishResult } from "$lib/polish/types";
+import { z } from "zod";
 import { buildPolishPrompt, PROMPT_VERSION } from "./prompt";
 
 // `PolishResult` is the shared wire contract — see `$lib/polish/types`.
@@ -128,18 +129,14 @@ export function createGeminiClient(options: GeminiClientOptions): GeminiClient {
       return { ok: false, reason: "upstream", status: response.status };
     }
 
-    const polishedText =
-      parsed && typeof parsed === "object" && "polished" in parsed
-        ? (parsed as { polished: unknown }).polished
-        : null;
-
-    if (typeof polishedText !== "string" || polishedText.length === 0) {
+    const polishedCandidate = PolishedPayloadSchema.safeParse(parsed);
+    if (!polishedCandidate.success) {
       return { ok: false, reason: "upstream", status: response.status };
     }
 
     return {
       ok: true,
-      polishedText,
+      polishedText: polishedCandidate.data.polished,
       model,
       promptVersion: PROMPT_VERSION,
     };
@@ -147,6 +144,32 @@ export function createGeminiClient(options: GeminiClientOptions): GeminiClient {
 
   return { polish };
 }
+
+/**
+ * Shape of Gemini's `generateContent` response, narrowed to the one
+ * path we read. We only need `candidates[0].content.parts[0].text`;
+ * the `min(1)` constraints fail the parse if Gemini returned no
+ * candidates or no parts (both of which the classifier has to treat
+ * as `upstream`).
+ */
+const GeminiResponseSchema = z.object({
+  candidates: z
+    .array(
+      z.object({
+        content: z.object({
+          parts: z.array(z.object({ text: z.string() })).min(1),
+        }),
+      }),
+    )
+    .min(1),
+});
+
+/**
+ * Shape of the JSON the model is asked to emit inside `text`. The
+ * prompt pins `responseSchema` to a single `polished` string; anything
+ * else is an upstream failure.
+ */
+const PolishedPayloadSchema = z.object({ polished: z.string().min(1) });
 
 /**
  * Turn a non-2xx `Response` into the matching failure branch.
@@ -223,30 +246,10 @@ function parseRetryAfterMs(header: string | null): number | undefined {
  * Extracts the raw text string from a Gemini `generateContent` response.
  *
  * Shape: `{ candidates: [ { content: { parts: [ { text: "..." } ] } } ] }`
- * Returns `null` if any expected field is missing.
+ * Returns `null` if the payload doesn't match.
  */
 function extractText(payload: unknown): string | null {
-  const candidates =
-    payload && typeof payload === "object" && "candidates" in payload
-      ? (payload as { candidates: unknown }).candidates
-      : null;
-  if (!Array.isArray(candidates) || candidates.length === 0) return null;
-
-  const first = candidates[0];
-  const content =
-    first && typeof first === "object" && "content" in first
-      ? (first as { content: unknown }).content
-      : null;
-  const parts =
-    content && typeof content === "object" && "parts" in content
-      ? (content as { parts: unknown }).parts
-      : null;
-  if (!Array.isArray(parts) || parts.length === 0) return null;
-
-  const firstPart = parts[0];
-  const text =
-    firstPart && typeof firstPart === "object" && "text" in firstPart
-      ? (firstPart as { text: unknown }).text
-      : null;
-  return typeof text === "string" ? text : null;
+  const parsed = GeminiResponseSchema.safeParse(payload);
+  if (!parsed.success) return null;
+  return parsed.data.candidates[0].content.parts[0].text;
 }

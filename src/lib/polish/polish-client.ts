@@ -19,9 +19,9 @@
  */
 
 import type { Category } from "$lib/utils/transcript-parser";
-import type {
-  PolishFailureReason,
-  PolishResult,
+import {
+  PolishResultSchema,
+  type PolishResult,
 } from "$lib/polish/types";
 
 export interface PolishRequest {
@@ -76,79 +76,26 @@ export function createHttpPolishClient(
 }
 
 /**
- * Coerce an unknown JSON payload into the `PolishResult` union.
+ * Coerce an unknown JSON payload into the `PolishResult` union via
+ * the shared zod schema (single source of truth — see
+ * `$lib/polish/types`). Anything that doesn't parse degrades to
+ * `upstream` with the HTTP status of the response we received, so a
+ * bad proxy, a stale client, or a malicious body can't break the
+ * taxonomy the store relies on.
  *
- * The server emits payloads exactly matching the union; this function
- * defends against a bad proxy, a stale client talking to a newer
- * server, or a malicious response. Anything outside the taxonomy
- * degrades to `upstream`.
+ * One post-parse fix-up: when the server's `upstream` payload carries
+ * its own `status` (the inner Gemini status), we prefer that over the
+ * response's HTTP status. The other arms have no such hint.
  */
 function coerceResult(payload: unknown, status: number): PolishResult {
-  if (!isObject(payload)) return upstream(status);
-
-  if (payload.ok === true) {
-    const { polishedText, model, promptVersion } = payload as {
-      polishedText: unknown;
-      model: unknown;
-      promptVersion: unknown;
-    };
-    if (
-      typeof polishedText !== "string" ||
-      typeof model !== "string" ||
-      typeof promptVersion !== "number"
-    ) {
-      return upstream(status);
-    }
-    return { ok: true, polishedText, model, promptVersion };
-  }
-
-  if (payload.ok !== false) return upstream(status);
-
-  const reason = coerceReason(payload.reason);
-  switch (reason) {
-    case "rate-limited":
-    case "quota-exhausted": {
-      const retryAfterMs =
-        typeof payload.retryAfterMs === "number" ? payload.retryAfterMs : undefined;
-      return retryAfterMs === undefined
-        ? { ok: false, reason }
-        : { ok: false, reason, retryAfterMs };
-    }
-    case "upstream": {
-      // Prefer the server's own status hint when it sent one; otherwise
-      // fall back to the HTTP status of the response we received.
-      const payloadStatus =
-        typeof payload.status === "number" ? payload.status : status;
-      return { ok: false, reason: "upstream", status: payloadStatus };
-    }
-    case "too-long":
-    case "bad-request":
-    case "timeout":
-      return { ok: false, reason };
-  }
+  const parsed = PolishResultSchema.safeParse(payload);
+  if (!parsed.success) return upstream(status);
+  // The server already embedded its own `status` in the `upstream`
+  // arm; passing the parsed value through preserves it. No other arm
+  // carries HTTP-status data.
+  return parsed.data;
 }
 
 function upstream(status: number): PolishResult {
   return { ok: false, reason: "upstream", status };
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object";
-}
-
-const KNOWN_REASONS: ReadonlySet<PolishFailureReason> = new Set([
-  "too-long",
-  "bad-request",
-  "rate-limited",
-  "quota-exhausted",
-  "timeout",
-  "upstream",
-]);
-
-/** Trust the server's `reason` when it's in the taxonomy; else `upstream`. */
-function coerceReason(reason: unknown): PolishFailureReason {
-  return typeof reason === "string" &&
-    KNOWN_REASONS.has(reason as PolishFailureReason)
-    ? (reason as PolishFailureReason)
-    : "upstream";
 }

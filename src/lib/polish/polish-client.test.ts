@@ -5,11 +5,11 @@ import type { PolishResult } from "./types";
 /**
  * Tests for the HTTP adapter to `/api/polish`.
  *
- * This is where the `isObject` / `coerceReason` / payload-shape
- * defensive code used to live inline in the store. It now lives in
- * one place with one purpose: turn the wire into a typed
- * `PolishResult`. The store tests (`entries-store.test.ts`) inject a
- * `FakePolishClient` and don't exercise any of this.
+ * This is where the payload-shape defensive code used to live inline
+ * in the store. It now lives in one place with one purpose: turn the
+ * wire into a typed `PolishResult` via `PolishResultSchema`. The
+ * store tests (`entries-store.test.ts`) inject a `FakePolishClient`
+ * and don't exercise any of this.
  */
 
 function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
@@ -234,7 +234,11 @@ describe("createHttpPolishClient", () => {
     expect(result).toEqual({ ok: false, reason: "upstream", status: 200 });
   });
 
-  it("ignores non-number retryAfterMs on rate-limited", async () => {
+  it("non-number retryAfterMs on rate-limited → upstream (whole payload fails schema)", async () => {
+    // The hand-rolled validator used to silently drop a bogus
+    // retryAfterMs and keep the reason. The zod schema rejects the
+    // whole payload instead — the wire contract is precise, and a
+    // malformed field means the body is not trustworthy.
     const fetchImpl = vi.fn(async () =>
       jsonResponse(
         { ok: false, reason: "rate-limited", retryAfterMs: "2000" },
@@ -245,6 +249,6 @@ describe("createHttpPolishClient", () => {
       rawTranscript: "x",
       category: "todo",
     });
-    expect(result).toEqual({ ok: false, reason: "rate-limited" });
+    expect(result).toEqual({ ok: false, reason: "upstream", status: 429 });
   });
 });
