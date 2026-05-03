@@ -8,14 +8,14 @@
     type Filter = "all" | Category;
     type SheetState =
         | { kind: "none" }
-        | { kind: "edit"; entry: Entry };
+        | { kind: "edit"; entryId: string };
 
     const store = getEntriesContext();
     let filter = $state<Filter>("all");
     let sheet = $state<SheetState>({ kind: "none" });
 
     function openEdit(entry: Entry) {
-        sheet = { kind: "edit", entry };
+        sheet = { kind: "edit", entryId: entry.id };
     }
     // Long-press triggers AI polish. The store no-ops if the entry is
     // already polishing or already polished; EntryRow also short-
@@ -41,6 +41,18 @@
         { value: "note", label: "Note" },
         { value: "idea", label: "Idea" },
     ];
+    // Resolve the sheet's entry live from the store so category
+    // chips / revert-availability / polish state stay reactive as
+    // the sheet edits the entry in place. If the entry disappears
+    // (remove/clearDone), close the sheet.
+    const sheetEntry = $derived.by(() => {
+        const s = sheet;
+        if (s.kind !== "edit") return undefined;
+        return store.entries.find((e) => e.id === s.entryId);
+    });
+    $effect(() => {
+        if (sheet.kind === "edit" && !sheetEntry) closeSheet();
+    });
 </script>
 
 <div class="flex flex-col gap-4">
@@ -80,6 +92,6 @@
     <InboxList {sections} onTap={openEdit} {onLongPress} />
 </div>
 
-{#if sheet.kind === "edit"}
-    <EditSheet entry={sheet.entry} onClose={closeSheet} />
+{#if sheet.kind === "edit" && sheetEntry}
+    <EditSheet entry={sheetEntry} onClose={closeSheet} />
 {/if}

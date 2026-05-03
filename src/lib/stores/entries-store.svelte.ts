@@ -5,10 +5,33 @@ import {
   MAX_POLISH_TRANSCRIPT_CHARS,
   type PolishFailureReason,
 } from "$lib/polish/types";
+import {
+  createHttpPolishClient,
+  type PolishClient,
+} from "$lib/polish/polish-client";
+import { effectiveText } from "$lib/utils/effective-text";
+import { isBlank, normalizeEditText } from "$lib/utils/edit-text";
+
+/**
+ * Grouped polish metadata. All four fields move as one — CONTEXT.md
+ * invariant "set together, cleared together" is now structural:
+ * either `entry.polish` is `null` (unpolished or reverted) or every
+ * field is populated. No partial states are representable.
+ */
+export interface Polish {
+  /** AI-polished form of the entry's body. */
+  text: string;
+  /** Timestamp of the polish. */
+  at: number;
+  /** Gemini model id used, e.g. `gemini-3.1-flash-lite-preview`. */
+  model: string;
+  /** Prompt template version used. */
+  promptVersion: number;
+}
 
 export interface Entry {
   id: string;
-  schemaVersion: 2;
+  schemaVersion: 3;
   category: Category;
   displayText: string;
   rawTranscript: string;
@@ -18,29 +41,22 @@ export interface Entry {
   updatedAt: number;
   processedAt?: number;
   warning?: "partial-transcription";
-  /** AI-polished form of the entry. `null` when not polished or reverted. */
-  polishedText: string | null;
-  /** Timestamp of the last successful polish. `null` when not polished. */
-  polishedAt: number | null;
-  /** Gemini model id used for the polish, e.g. `gemini-3.1-flash-lite-preview`. */
-  polishedModel: string | null;
-  /** Prompt template version used for the polish. */
-  polishedPromptVersion: number | null;
+  /**
+   * Grouped polish metadata. `null` when the entry has not been
+   * polished or has been reverted. See `Polish`.
+   */
+  polish: Polish | null;
 }
 
 /**
- * Fields the app is allowed to patch through `update()`. User-editable
- * content (`displayText`, `category`, `done`) plus the four polish
- * metadata fields, which are patched together when an edit clears a
- * polish or the user reverts to original. `updatedAt` is always
- * stamped by the store itself.
+ * Internal reducer patch shape. Not exported: callers use the
+ * intent-named operations (`editText`, `setCategory`, `toggleDone`,
+ * `revertPolish`) which structurally enforce the polish invariants.
+ * `updatedAt` is always stamped by the store itself.
  */
-export type EntryUpdatePatch = Partial<
+type EntryUpdatePatch = Partial<
   Pick<Entry, "displayText" | "category" | "done"> & {
-    polishedText: string | null;
-    polishedAt: number | null;
-    polishedModel: string | null;
-    polishedPromptVersion: number | null;
+    polish: Polish | null;
   }
 >;
 
@@ -57,8 +73,12 @@ export interface EntriesStoreOptions {
   now?: () => number;
   idFactory?: () => string;
   storageKey?: string;
-  /** Override for tests. Defaults to global `fetch`. */
-  fetchImpl?: typeof fetch;
+  /**
+   * HTTP client for `/api/polish`. Tests inject a `FakePolishClient`
+   * returning typed `PolishResult` values; production uses the
+   * default `createHttpPolishClient()` against global `fetch`.
+   */
+  polishClient?: PolishClient;
   /**
    * Optional hook called when the polish request fails. The `reason`
    * is the server-taxonomy discriminant (see `$lib/polish/types`) so
@@ -80,17 +100,40 @@ export interface EntriesStore {
   readonly entries: Entry[];
   byCategory(category: Category): Entry[];
   add(input: AddInput): Entry;
-  update(id: string, patch: EntryUpdatePatch): void;
+  /**
+   * Commit a user edit of the entry body. Encapsulates the three
+   * save-path cases:
+   *   1. Input (after whitespace-normalise) equals `effectiveText` →
+   *      no write, no `updatedAt` bump.
+   *   2. Input differs and the entry is polished → write the new
+   *      `displayText` and clear `polish` in one shot (the edit
+   *      becomes the canonical display).
+   *   3. Input differs and the entry is unpolished → write
+   *      `displayText` only.
+   * Blank input is a no-op (defence in depth; the EditSheet also
+   * disables Save while blank).
+   */
+  editText(id: string, displayText: string): void;
+  /** Change the entry's category. Does not touch polish metadata. */
+  setCategory(id: string, category: Category): void;
+  /** Flip `done`. Does not touch polish metadata. */
+  toggleDone(id: string): void;
+  /**
+   * Clear polish metadata while leaving `displayText` and
+   * `rawTranscript` untouched, so a re-polish remains available.
+   */
+  revertPolish(id: string): void;
   remove(id: string): void;
   restore(entry: Entry): void;
   clearDone(): void;
   /**
    * Trigger an AI polish for the given entry. No-op if the entry is
-   * already polishing or already has `polishedText`. On success the
-   * four polish fields are applied via the normal update path; on
-   * failure `onPolishError` is called and the entry is left unchanged.
-   * If `update(id, …)` or `remove(id)` is called while the request is
-   * in flight, the eventual response is discarded silently.
+   * already polishing or already has `polish` set. On success the
+   * grouped `polish` field is applied; on failure `onPolishError` is
+   * called and the entry is left unchanged. If any user-initiated
+   * mutation (`editText` that writes, `setCategory`, `toggleDone`,
+   * `revertPolish`, `remove`) happens while the request is in flight,
+   * the eventual response is discarded silently.
    */
   polish(id: string): Promise<void>;
   /** Reactive: true iff a polish request is in flight for `id`. */
@@ -105,7 +148,7 @@ export function createEntriesStore(
   const storage = options.storage;
   const storageKey = options.storageKey ?? "memento:entries";
 
-  const fetchImpl = options.fetchImpl ?? ((...args) => fetch(...args));
+  const polishClient = options.polishClient ?? createHttpPolishClient();
   const onPolishError = options.onPolishError;
 
   const loaded = loadInitial(storage, storageKey);
@@ -138,10 +181,7 @@ export function createEntriesStore(
       done: false,
       createdAt: ts,
       updatedAt: ts,
-      polishedText: null,
-      polishedAt: null,
-      polishedModel: null,
-      polishedPromptVersion: null,
+      polish: null,
       ...(input.warning ? { warning: input.warning } : {}),
     };
     entries = [entry, ...entries];
@@ -149,7 +189,13 @@ export function createEntriesStore(
     return entry;
   }
 
-  function update(id: string, patch: EntryUpdatePatch): void {
+  /**
+   * Internal reducer. Every user-initiated mutation funnels through
+   * here so the `polishingIds.delete(id)` + `updatedAt` stamp + write
+   * are guaranteed to move together. Callers are the intent-named
+   * operations below; external callers use those, not this.
+   */
+  function applyPatch(id: string, patch: EntryUpdatePatch): void {
     const idx = entries.findIndex((e) => e.id === id);
     if (idx === -1) return;
     // User-initiated change invalidates any in-flight polish.
@@ -158,6 +204,37 @@ export function createEntriesStore(
     const next: Entry = { ...current, ...patch, updatedAt: now() };
     entries = [...entries.slice(0, idx), next, ...entries.slice(idx + 1)];
     persist();
+  }
+
+  function editText(id: string, displayText: string): void {
+    if (isBlank(displayText)) return;
+    const entry = entries.find((e) => e.id === id);
+    if (!entry) return;
+    const normalized = normalizeEditText(displayText);
+    // Case 1: no-op when the normalised input matches what the user
+    // already sees. Must not bump `updatedAt` or clear polish.
+    if (normalized === effectiveText(entry)) return;
+    // Case 2: diverging edit on a polished entry — clear the quartet
+    // and let the edit become canonical. Case 3: plain write.
+    const patch: EntryUpdatePatch =
+      entry.polish != null
+        ? { displayText: normalized, polish: null }
+        : { displayText: normalized };
+    applyPatch(id, patch);
+  }
+
+  function setCategory(id: string, category: Category): void {
+    applyPatch(id, { category });
+  }
+
+  function toggleDone(id: string): void {
+    const entry = entries.find((e) => e.id === id);
+    if (!entry) return;
+    applyPatch(id, { done: !entry.done });
+  }
+
+  function revertPolish(id: string): void {
+    applyPatch(id, { polish: null });
   }
 
   function remove(id: string): void {
@@ -177,13 +254,11 @@ export function createEntriesStore(
     const idx = entries.findIndex((e) => e.id === id);
     if (idx === -1) return;
     const current = entries[idx];
+    const ts = now();
     const next: Entry = {
       ...current,
-      polishedText,
-      polishedAt: now(),
-      polishedModel: model,
-      polishedPromptVersion: promptVersion,
-      updatedAt: now(),
+      polish: { text: polishedText, at: ts, model, promptVersion },
+      updatedAt: ts,
     };
     entries = [...entries.slice(0, idx), next, ...entries.slice(idx + 1)];
     persist();
@@ -193,7 +268,7 @@ export function createEntriesStore(
     if (polishingIds.has(id)) return;
     const entry = entries.find((e) => e.id === id);
     if (!entry) return;
-    if (entry.polishedText != null) return;
+    if (entry.polish != null) return;
 
     // Client-side length guard: a cheap UX win that avoids the network
     // round-trip for transcripts the server would reject anyway. The
@@ -204,74 +279,29 @@ export function createEntriesStore(
     }
 
     polishingIds.add(id);
-    const { rawTranscript, category } = entry;
-
-    let response: Response;
-    try {
-      response = await fetchImpl("/api/polish", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ rawTranscript, category }),
-      });
-    } catch {
-      // Network throw — no response, so we can't be more specific than
-      // `upstream`. (Timeouts originate server-side in slice #4 and
-      // come back as a real 504 body, not a client-side throw.)
-      if (polishingIds.delete(id)) onPolishError?.("upstream");
-      return;
-    }
+    const result = await polishClient.polish({
+      rawTranscript: entry.rawTranscript,
+      category: entry.category,
+    });
 
     // Entry was edited or deleted while the request was in flight:
-    // discard the response silently.
-    if (!polishingIds.has(id)) return;
+    // discard the response silently. `update` / `remove` both
+    // `polishingIds.delete(id)` unconditionally, so membership here
+    // means "still the same in-flight request we started above".
+    if (!polishingIds.delete(id)) return;
 
-    let payload: unknown;
-    try {
-      payload = await response.json();
-    } catch {
-      if (polishingIds.delete(id)) onPolishError?.("upstream");
+    if (result.ok) {
+      applyPolishResult(id, result.polishedText, result.model, result.promptVersion);
       return;
     }
 
-    // Re-check: the response parse is async too.
-    if (!polishingIds.has(id)) return;
-
-    if (!isObject(payload)) {
-      polishingIds.delete(id);
-      onPolishError?.("upstream");
-      return;
-    }
-
-    if (payload.ok === true) {
-      const { polishedText, model, promptVersion } = payload as {
-        polishedText: unknown;
-        model: unknown;
-        promptVersion: unknown;
-      };
-      if (
-        typeof polishedText !== "string" ||
-        typeof model !== "string" ||
-        typeof promptVersion !== "number"
-      ) {
-        polishingIds.delete(id);
-        onPolishError?.("upstream");
-        return;
-      }
-      applyPolishResult(id, polishedText, model, promptVersion);
-      polishingIds.delete(id);
-      return;
-    }
-
-    // `ok: false` branch. Trust the server's `reason` literal when it
-    // matches the taxonomy; anything else falls back to `upstream`.
-    polishingIds.delete(id);
-    const reason = coerceReason(payload.reason);
-    const retryAfterMs =
-      typeof payload.retryAfterMs === "number" ? payload.retryAfterMs : undefined;
-    if (retryAfterMs !== undefined) {
-      onPolishError?.(reason, { retryAfterMs });
+    if (
+      (result.reason === "rate-limited" || result.reason === "quota-exhausted") &&
+      result.retryAfterMs !== undefined
+    ) {
+      onPolishError?.(result.reason, { retryAfterMs: result.retryAfterMs });
     } else {
-      onPolishError?.(reason);
+      onPolishError?.(result.reason);
     }
   }
 
@@ -299,7 +329,10 @@ export function createEntriesStore(
       return entries.filter((e) => e.category === category);
     },
     add,
-    update,
+    editText,
+    setCategory,
+    toggleDone,
+    revertPolish,
     remove,
     restore,
     clearDone,
@@ -322,26 +355,6 @@ function loadInitial(
   } catch {
     return { entries: [], changed: false };
   }
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object";
-}
-
-const KNOWN_REASONS: ReadonlySet<PolishFailureReason> = new Set([
-  "too-long",
-  "bad-request",
-  "rate-limited",
-  "quota-exhausted",
-  "timeout",
-  "upstream",
-]);
-
-/** Trust the server's `reason` when it's in the taxonomy; else `upstream`. */
-function coerceReason(reason: unknown): PolishFailureReason {
-  return typeof reason === "string" && KNOWN_REASONS.has(reason as PolishFailureReason)
-    ? (reason as PolishFailureReason)
-    : "upstream";
 }
 
 const ENTRIES_CONTEXT_KEY = Symbol("memento:entries-store");

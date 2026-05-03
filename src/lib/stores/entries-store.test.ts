@@ -1,13 +1,67 @@
 import { describe, it, expect, vi } from "vitest";
 import { createEntriesStore } from "./entries-store.svelte";
 import { createFakeStorage } from "./fake-storage";
+import type {
+  PolishClient,
+  PolishRequest,
+} from "$lib/polish/polish-client";
+import type { PolishResult } from "$lib/polish/types";
 
-function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
-  return new Response(JSON.stringify(body), {
-    status: 200,
-    headers: { "content-type": "application/json" },
-    ...init,
-  });
+/**
+ * Minimal fake for the polish seam. Resolves the in-flight request
+ * with whatever `result` is set at the time of `resolve()`, so tests
+ * can (a) reason about what `PolishResult` the store sees, not what
+ * bytes crossed the wire, and (b) control in-flight timing for
+ * conflict tests without building `Response` objects.
+ */
+function createFakePolishClient(): {
+  client: PolishClient;
+  calls: PolishRequest[];
+  pending: number;
+  resolveNext(result: PolishResult): void;
+  resolveAllWith(result: PolishResult): void;
+} {
+  const calls: PolishRequest[] = [];
+  const resolvers: Array<(r: PolishResult) => void> = [];
+  return {
+    calls,
+    get pending() {
+      return resolvers.length;
+    },
+    client: {
+      polish(req) {
+        calls.push(req);
+        return new Promise<PolishResult>((resolve) => {
+          resolvers.push(resolve);
+        });
+      },
+    },
+    resolveNext(result) {
+      const r = resolvers.shift();
+      if (!r) throw new Error("no pending polish call to resolve");
+      r(result);
+    },
+    resolveAllWith(result) {
+      while (resolvers.length) resolvers.shift()!(result);
+    },
+  };
+}
+
+/** Eagerly-resolving fake — simpler for the synchronous happy path. */
+function immediateClient(result: PolishResult): {
+  client: PolishClient;
+  calls: PolishRequest[];
+} {
+  const calls: PolishRequest[] = [];
+  return {
+    calls,
+    client: {
+      async polish(req) {
+        calls.push(req);
+        return result;
+      },
+    },
+  };
 }
 
 function makeDeps() {
@@ -52,7 +106,7 @@ describe("entries-store", () => {
 
     expect(entry).toEqual({
       id: "id-1",
-      schemaVersion: 2,
+      schemaVersion: 3,
       category: "note",
       displayText: "Remember this.",
       rawTranscript: "note remember this",
@@ -60,10 +114,7 @@ describe("entries-store", () => {
       done: false,
       createdAt: 12_345,
       updatedAt: 12_345,
-      polishedText: null,
-      polishedAt: null,
-      polishedModel: null,
-      polishedPromptVersion: null,
+      polish: null,
     });
     expect("processedAt" in entry).toBe(false);
   });
@@ -101,10 +152,10 @@ describe("entries-store", () => {
     expect(second.entries).toHaveLength(1);
     expect(second.entries[0].displayText).toBe("Buy milk.");
     expect(second.entries[0].category).toBe("todo");
-    expect(second.entries[0].schemaVersion).toBe(2);
+    expect(second.entries[0].schemaVersion).toBe(3);
   });
 
-  it("update() mutates allowed fields and bumps updatedAt without changing createdAt", () => {
+  it("setCategory/toggleDone/editText mutate allowed fields and bump updatedAt without changing createdAt", () => {
     const deps = makeDeps();
     deps.setNow(1_000);
     const store = createEntriesStore(deps);
@@ -115,7 +166,9 @@ describe("entries-store", () => {
     });
 
     deps.setNow(5_000);
-    store.update(entry.id, { displayText: "Buy oat milk.", done: true, category: "note" });
+    store.editText(entry.id, "Buy oat milk.");
+    store.toggleDone(entry.id);
+    store.setCategory(entry.id, "note");
 
     const updated = store.entries[0];
     expect(updated.id).toBe(entry.id);
@@ -128,44 +181,150 @@ describe("entries-store", () => {
     expect(updated.rawTranscript).toBe("todo buy milk");
   });
 
-  it("update() merges a polish-clearing patch (all four fields to null)", () => {
-    const deps = makeDeps();
-    deps.setNow(1_000);
-    const store = createEntriesStore(deps);
-    const entry = store.add({
-      category: "todo",
-      displayText: "buy milk",
-      rawTranscript: "todo buy milk",
+  describe("editText", () => {
+    it("is a no-op when the input equals effectiveText on a never-polished entry (no updatedAt bump)", () => {
+      const deps = makeDeps();
+      deps.setNow(1_000);
+      const store = createEntriesStore(deps);
+      const entry = store.add({
+        category: "todo",
+        displayText: "Buy milk.",
+        rawTranscript: "todo buy milk",
+      });
+
+      deps.setNow(5_000);
+      store.editText(entry.id, "  Buy   milk.  ");
+
+      const after = store.entries[0];
+      expect(after.displayText).toBe("Buy milk.");
+      expect(after.updatedAt).toBe(1_000);
+      expect(after.polish).toBeNull();
     });
 
-    // Simulate a prior polish by patching the four fields directly
-    // through the widened update signature.
-    deps.setNow(2_000);
-    store.update(entry.id, {
-      polishedText: "Buy milk.",
-      polishedAt: 2_000,
-      polishedModel: "test-model",
-      polishedPromptVersion: 1,
-    });
-    expect(store.entries[0].polishedText).toBe("Buy milk.");
+    it("is a no-op when the input equals polish.text on a polished entry (polish preserved, no updatedAt bump)", async () => {
+      const deps = makeDeps();
+      deps.setNow(1_000);
+      const fake = immediateClient({
+        ok: true,
+        polishedText: "Buy milk.",
+        model: "test-model",
+        promptVersion: 1,
+      });
+      const store = createEntriesStore({ ...deps, polishClient: fake.client });
+      const entry = store.add({
+        category: "todo",
+        displayText: "buy milk",
+        rawTranscript: "todo buy milk",
+      });
+      deps.setNow(2_000);
+      await store.polish(entry.id);
+      const polished = store.entries[0].polish;
 
-    // Now clear the polish via the same path (the revert operation).
-    deps.setNow(3_000);
-    store.update(entry.id, {
-      polishedText: null,
-      polishedAt: null,
-      polishedModel: null,
-      polishedPromptVersion: null,
+      deps.setNow(9_000);
+      store.editText(entry.id, "Buy milk.");
+
+      const after = store.entries[0];
+      expect(after.polish).toEqual(polished);
+      expect(after.displayText).toBe("buy milk");
+      expect(after.updatedAt).toBe(2_000);
     });
 
-    const after = store.entries[0];
-    expect(after.polishedText).toBeNull();
-    expect(after.polishedAt).toBeNull();
-    expect(after.polishedModel).toBeNull();
-    expect(after.polishedPromptVersion).toBeNull();
-    expect(after.updatedAt).toBe(3_000);
-    expect(after.displayText).toBe("buy milk");
-    expect(after.rawTranscript).toBe("todo buy milk");
+    it("writes displayText and clears polish in one shot when input diverges from a polished entry", async () => {
+      const deps = makeDeps();
+      deps.setNow(1_000);
+      const fake = immediateClient({
+        ok: true,
+        polishedText: "Buy milk.",
+        model: "test-model",
+        promptVersion: 1,
+      });
+      const store = createEntriesStore({ ...deps, polishClient: fake.client });
+      const entry = store.add({
+        category: "todo",
+        displayText: "buy milk",
+        rawTranscript: "todo buy milk",
+      });
+      deps.setNow(2_000);
+      await store.polish(entry.id);
+      expect(store.entries[0].polish).not.toBeNull();
+
+      deps.setNow(3_000);
+      store.editText(entry.id, "  Buy   oat milk.  ");
+
+      const after = store.entries[0];
+      expect(after.displayText).toBe("Buy oat milk.");
+      expect(after.polish).toBeNull();
+      expect(after.updatedAt).toBe(3_000);
+      expect(after.rawTranscript).toBe("todo buy milk");
+    });
+
+    it("writes displayText only (no polish field touched) on a never-polished diverging edit", () => {
+      const deps = makeDeps();
+      deps.setNow(1_000);
+      const store = createEntriesStore(deps);
+      const entry = store.add({
+        category: "todo",
+        displayText: "Buy milk.",
+        rawTranscript: "todo buy milk",
+      });
+
+      deps.setNow(3_000);
+      store.editText(entry.id, "Buy oat milk.");
+
+      const after = store.entries[0];
+      expect(after.displayText).toBe("Buy oat milk.");
+      expect(after.polish).toBeNull();
+      expect(after.updatedAt).toBe(3_000);
+    });
+
+    it("is a no-op on blank input (defence-in-depth)", () => {
+      const deps = makeDeps();
+      deps.setNow(1_000);
+      const store = createEntriesStore(deps);
+      const entry = store.add({
+        category: "todo",
+        displayText: "Buy milk.",
+        rawTranscript: "todo buy milk",
+      });
+
+      deps.setNow(5_000);
+      store.editText(entry.id, "   ");
+
+      const after = store.entries[0];
+      expect(after.displayText).toBe("Buy milk.");
+      expect(after.updatedAt).toBe(1_000);
+    });
+  });
+
+  describe("revertPolish", () => {
+    it("clears polish without touching displayText or rawTranscript, and bumps updatedAt", async () => {
+      const deps = makeDeps();
+      deps.setNow(1_000);
+      const fake = immediateClient({
+        ok: true,
+        polishedText: "Buy milk.",
+        model: "test-model",
+        promptVersion: 1,
+      });
+      const store = createEntriesStore({ ...deps, polishClient: fake.client });
+      const entry = store.add({
+        category: "todo",
+        displayText: "buy milk",
+        rawTranscript: "todo buy milk",
+      });
+      deps.setNow(2_000);
+      await store.polish(entry.id);
+      expect(store.entries[0].polish).not.toBeNull();
+
+      deps.setNow(3_000);
+      store.revertPolish(entry.id);
+
+      const after = store.entries[0];
+      expect(after.polish).toBeNull();
+      expect(after.displayText).toBe("buy milk");
+      expect(after.rawTranscript).toBe("todo buy milk");
+      expect(after.updatedAt).toBe(3_000);
+    });
   });
 
   it("remove() deletes the entry with the given id", () => {
@@ -188,8 +347,8 @@ describe("entries-store", () => {
     const c = store.add({ category: "idea", displayText: "C.", rawTranscript: "idea c" });
     const d = store.add({ category: "todo", displayText: "D.", rawTranscript: "todo d" });
 
-    store.update(a.id, { done: true });
-    store.update(c.id, { done: true });
+    store.toggleDone(a.id);
+    store.toggleDone(c.id);
 
     store.clearDone();
 
@@ -288,14 +447,14 @@ describe("entries-store", () => {
       rawTranscript: "todo buy milk",
     });
     deps.setNow(2_000);
-    first.update(entry.id, { done: true });
+    first.toggleDone(entry.id);
 
     const second = createEntriesStore({ storage: deps.storage });
     const rehydrated = second.entries[0];
 
     expect(rehydrated).toEqual({
       id: entry.id,
-      schemaVersion: 2,
+      schemaVersion: 3,
       category: "todo",
       displayText: "Buy milk.",
       rawTranscript: "todo buy milk",
@@ -303,10 +462,7 @@ describe("entries-store", () => {
       done: true,
       createdAt: 1_000,
       updatedAt: 2_000,
-      polishedText: null,
-      polishedAt: null,
-      polishedModel: null,
-      polishedPromptVersion: null,
+      polish: null,
     });
     expect("processedAt" in rehydrated).toBe(false);
   });
@@ -340,7 +496,7 @@ describe("entries-store", () => {
   });
 
   describe("migration on load", () => {
-    it("upgrades a v1-shaped localStorage blob to v2 entries in the store", () => {
+    it("upgrades a v1-shaped localStorage blob straight to v3 entries in the store", () => {
       const deps = makeDeps();
       const v1 = {
         id: "legacy-1",
@@ -358,14 +514,11 @@ describe("entries-store", () => {
       const store = createEntriesStore(deps);
 
       expect(store.entries).toHaveLength(1);
-      expect(store.entries[0].schemaVersion).toBe(2);
-      expect(store.entries[0].polishedText).toBeNull();
-      expect(store.entries[0].polishedAt).toBeNull();
-      expect(store.entries[0].polishedModel).toBeNull();
-      expect(store.entries[0].polishedPromptVersion).toBeNull();
+      expect(store.entries[0].schemaVersion).toBe(3);
+      expect(store.entries[0].polish).toBeNull();
     });
 
-    it("eagerly persists v1 → v2 upgrade back to storage on first load", () => {
+    it("eagerly persists v1 → v3 upgrade back to storage on first load", () => {
       const deps = makeDeps();
       const v1 = {
         id: "legacy-1",
@@ -384,18 +537,18 @@ describe("entries-store", () => {
 
       const persisted = JSON.parse(deps.storage.getItem("memento:entries")!);
       expect(persisted).toHaveLength(1);
-      expect(persisted[0].schemaVersion).toBe(2);
-      expect(persisted[0].polishedText).toBeNull();
+      expect(persisted[0].schemaVersion).toBe(3);
+      expect(persisted[0].polish).toBeNull();
     });
 
-    it("does not rewrite storage when every entry is already v2", () => {
+    it("does not rewrite storage when every entry is already v3", () => {
       const deps = makeDeps();
       const store1 = createEntriesStore(deps);
       store1.add({ category: "todo", displayText: "A.", rawTranscript: "todo a" });
 
       const blobBefore = deps.storage.getItem("memento:entries")!;
 
-      // Spy on setItem to ensure no write happens on pure-v2 load.
+      // Spy on setItem to ensure no write happens on pure-v3 load.
       let writes = 0;
       const originalSetItem = deps.storage.setItem.bind(deps.storage);
       deps.storage.setItem = (k: string, v: string) => {
@@ -439,22 +592,16 @@ describe("entries-store", () => {
   });
 
   describe("polish()", () => {
-    it("happy path: writes the four polish fields", async () => {
+    it("happy path: writes the grouped polish field", async () => {
       const deps = makeDeps();
       deps.setNow(1_000);
-      const fetchImpl = vi.fn(
-        async (_url: string | URL | Request, _init?: RequestInit) =>
-          jsonResponse({
-            ok: true,
-            polishedText: "Buy milk.",
-            model: "test-model",
-            promptVersion: 1,
-          }),
-      );
-      const store = createEntriesStore({
-        ...deps,
-        fetchImpl: fetchImpl as unknown as typeof fetch,
+      const fake = immediateClient({
+        ok: true,
+        polishedText: "Buy milk.",
+        model: "test-model",
+        promptVersion: 1,
       });
+      const store = createEntriesStore({ ...deps, polishClient: fake.client });
       const entry = store.add({
         category: "todo",
         displayText: "buy milk",
@@ -465,34 +612,22 @@ describe("entries-store", () => {
       await store.polish(entry.id);
 
       const after = store.entries[0];
-      expect(after.polishedText).toBe("Buy milk.");
-      expect(after.polishedAt).toBe(2_000);
-      expect(after.polishedModel).toBe("test-model");
-      expect(after.polishedPromptVersion).toBe(1);
-      expect(store.isPolishing(entry.id)).toBe(false);
-      expect(fetchImpl).toHaveBeenCalledTimes(1);
-      const [url, init] = fetchImpl.mock.calls[0] as [
-        string,
-        RequestInit,
-      ];
-      expect(url).toBe("/api/polish");
-      const body = JSON.parse(String(init.body));
-      expect(body).toEqual({
-        rawTranscript: "todo buy milk",
-        category: "todo",
+      expect(after.polish).toEqual({
+        text: "Buy milk.",
+        at: 2_000,
+        model: "test-model",
+        promptVersion: 1,
       });
+      expect(store.isPolishing(entry.id)).toBe(false);
+      expect(fake.calls).toEqual([
+        { rawTranscript: "todo buy milk", category: "todo" },
+      ]);
     });
 
     it("isPolishing(id) is true while the request is in flight", async () => {
       const deps = makeDeps();
-      let resolve!: (r: Response) => void;
-      const fetchImpl = vi.fn(
-        () => new Promise<Response>((r) => (resolve = r)),
-      );
-      const store = createEntriesStore({
-        ...deps,
-        fetchImpl: fetchImpl as unknown as typeof fetch,
-      });
+      const fake = createFakePolishClient();
+      const store = createEntriesStore({ ...deps, polishClient: fake.client });
       const entry = store.add({
         category: "todo",
         displayText: "x",
@@ -502,28 +637,15 @@ describe("entries-store", () => {
       const promise = store.polish(entry.id);
       expect(store.isPolishing(entry.id)).toBe(true);
 
-      resolve(
-        jsonResponse({
-          ok: true,
-          polishedText: "X.",
-          model: "m",
-          promptVersion: 1,
-        }),
-      );
+      fake.resolveNext({ ok: true, polishedText: "X.", model: "m", promptVersion: 1 });
       await promise;
       expect(store.isPolishing(entry.id)).toBe(false);
     });
 
     it("is a no-op when already polishing", async () => {
       const deps = makeDeps();
-      let resolve!: (r: Response) => void;
-      const fetchImpl = vi.fn(
-        () => new Promise<Response>((r) => (resolve = r)),
-      );
-      const store = createEntriesStore({
-        ...deps,
-        fetchImpl: fetchImpl as unknown as typeof fetch,
-      });
+      const fake = createFakePolishClient();
+      const store = createEntriesStore({ ...deps, polishClient: fake.client });
       const entry = store.add({
         category: "todo",
         displayText: "x",
@@ -532,33 +654,21 @@ describe("entries-store", () => {
 
       const first = store.polish(entry.id);
       await store.polish(entry.id); // second call no-ops immediately
-      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect(fake.calls).toHaveLength(1);
 
-      resolve(
-        jsonResponse({
-          ok: true,
-          polishedText: "X.",
-          model: "m",
-          promptVersion: 1,
-        }),
-      );
+      fake.resolveNext({ ok: true, polishedText: "X.", model: "m", promptVersion: 1 });
       await first;
     });
 
-    it("is a no-op when the entry already has polishedText", async () => {
+    it("is a no-op when the entry already has polish set", async () => {
       const deps = makeDeps();
-      const fetchImpl = vi.fn(async () =>
-        jsonResponse({
-          ok: true,
-          polishedText: "First.",
-          model: "m",
-          promptVersion: 1,
-        }),
-      );
-      const store = createEntriesStore({
-        ...deps,
-        fetchImpl: fetchImpl as unknown as typeof fetch,
+      const fake = immediateClient({
+        ok: true,
+        polishedText: "First.",
+        model: "m",
+        promptVersion: 1,
       });
+      const store = createEntriesStore({ ...deps, polishClient: fake.client });
       const entry = store.add({
         category: "todo",
         displayText: "x",
@@ -566,21 +676,15 @@ describe("entries-store", () => {
       });
 
       await store.polish(entry.id);
-      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect(fake.calls).toHaveLength(1);
       await store.polish(entry.id); // second call no-ops — already polished
-      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect(fake.calls).toHaveLength(1);
     });
 
     it("edit-during-flight discards the eventual response", async () => {
       const deps = makeDeps();
-      let resolve!: (r: Response) => void;
-      const fetchImpl = vi.fn(
-        () => new Promise<Response>((r) => (resolve = r)),
-      );
-      const store = createEntriesStore({
-        ...deps,
-        fetchImpl: fetchImpl as unknown as typeof fetch,
-      });
+      const fake = createFakePolishClient();
+      const store = createEntriesStore({ ...deps, polishClient: fake.client });
       const entry = store.add({
         category: "todo",
         displayText: "x",
@@ -588,33 +692,25 @@ describe("entries-store", () => {
       });
 
       const promise = store.polish(entry.id);
-      store.update(entry.id, { displayText: "edited" });
+      store.editText(entry.id, "edited");
       expect(store.isPolishing(entry.id)).toBe(false);
 
-      resolve(
-        jsonResponse({
-          ok: true,
-          polishedText: "Should be discarded.",
-          model: "m",
-          promptVersion: 1,
-        }),
-      );
+      fake.resolveNext({
+        ok: true,
+        polishedText: "Should be discarded.",
+        model: "m",
+        promptVersion: 1,
+      });
       await promise;
 
-      expect(store.entries[0].polishedText).toBeNull();
+      expect(store.entries[0].polish).toBeNull();
       expect(store.entries[0].displayText).toBe("edited");
     });
 
     it("delete-during-flight discards the eventual response", async () => {
       const deps = makeDeps();
-      let resolve!: (r: Response) => void;
-      const fetchImpl = vi.fn(
-        () => new Promise<Response>((r) => (resolve = r)),
-      );
-      const store = createEntriesStore({
-        ...deps,
-        fetchImpl: fetchImpl as unknown as typeof fetch,
-      });
+      const fake = createFakePolishClient();
+      const store = createEntriesStore({ ...deps, polishClient: fake.client });
       const entry = store.add({
         category: "todo",
         displayText: "x",
@@ -624,52 +720,27 @@ describe("entries-store", () => {
       const promise = store.polish(entry.id);
       store.remove(entry.id);
 
-      resolve(
-        jsonResponse({
-          ok: true,
-          polishedText: "Should be discarded.",
-          model: "m",
-          promptVersion: 1,
-        }),
-      );
+      fake.resolveNext({
+        ok: true,
+        polishedText: "Should be discarded.",
+        model: "m",
+        promptVersion: 1,
+      });
       await promise;
 
       expect(store.entries).toHaveLength(0);
     });
 
-    it("calls onPolishError and leaves the entry unchanged on network failure", async () => {
+    it("calls onPolishError and leaves the entry unchanged on upstream failure", async () => {
+      // The adapter converts network throws to `upstream`. From the
+      // store's perspective there's no difference; all it sees is a
+      // typed `PolishResult`.
       const deps = makeDeps();
-      const fetchImpl = vi.fn(async () => {
-        throw new Error("boom");
-      });
+      const fake = immediateClient({ ok: false, reason: "upstream", status: 0 });
       const onPolishError = vi.fn();
       const store = createEntriesStore({
         ...deps,
-        fetchImpl: fetchImpl as unknown as typeof fetch,
-        onPolishError,
-      });
-      const entry = store.add({
-        category: "todo",
-        displayText: "x",
-        rawTranscript: "todo x",
-      });
-
-      await store.polish(entry.id);
-
-      expect(onPolishError).toHaveBeenCalledTimes(1);
-      expect(store.isPolishing(entry.id)).toBe(false);
-      expect(store.entries[0].polishedText).toBeNull();
-    });
-
-    it("calls onPolishError when response.ok is false", async () => {
-      const deps = makeDeps();
-      const fetchImpl = vi.fn(async () =>
-        jsonResponse({ ok: false, reason: "upstream", status: 500 }, { status: 502 }),
-      );
-      const onPolishError = vi.fn();
-      const store = createEntriesStore({
-        ...deps,
-        fetchImpl: fetchImpl as unknown as typeof fetch,
+        polishClient: fake.client,
         onPolishError,
       });
       const entry = store.add({
@@ -681,18 +752,17 @@ describe("entries-store", () => {
       await store.polish(entry.id);
 
       expect(onPolishError).toHaveBeenCalledWith("upstream");
-      expect(store.entries[0].polishedText).toBeNull();
+      expect(store.isPolishing(entry.id)).toBe(false);
+      expect(store.entries[0].polish).toBeNull();
     });
 
-    it("propagates the server's reason literal to onPolishError (rate-limited)", async () => {
+    it("routes { ok: false; reason: 'rate-limited' } to onPolishError('rate-limited')", async () => {
       const deps = makeDeps();
-      const fetchImpl = vi.fn(async () =>
-        jsonResponse({ ok: false, reason: "rate-limited" }, { status: 429 }),
-      );
+      const fake = immediateClient({ ok: false, reason: "rate-limited" });
       const onPolishError = vi.fn();
       const store = createEntriesStore({
         ...deps,
-        fetchImpl: fetchImpl as unknown as typeof fetch,
+        polishClient: fake.client,
         onPolishError,
       });
       const entry = store.add({
@@ -707,18 +777,17 @@ describe("entries-store", () => {
       expect(store.isPolishing(entry.id)).toBe(false);
     });
 
-    it("forwards retryAfterMs to onPolishError when the server sent it", async () => {
+    it("forwards retryAfterMs to onPolishError when present on the result", async () => {
       const deps = makeDeps();
-      const fetchImpl = vi.fn(async () =>
-        jsonResponse(
-          { ok: false, reason: "rate-limited", retryAfterMs: 2000 },
-          { status: 429 },
-        ),
-      );
+      const fake = immediateClient({
+        ok: false,
+        reason: "rate-limited",
+        retryAfterMs: 2000,
+      });
       const onPolishError = vi.fn();
       const store = createEntriesStore({
         ...deps,
-        fetchImpl: fetchImpl as unknown as typeof fetch,
+        polishClient: fake.client,
         onPolishError,
       });
       const entry = store.add({
@@ -732,22 +801,21 @@ describe("entries-store", () => {
       expect(onPolishError).toHaveBeenCalledWith("rate-limited", { retryAfterMs: 2000 });
     });
 
-    it("propagates timeout / quota-exhausted / too-long / bad-request reasons", async () => {
-      const cases: Array<{ reason: string; status: number }> = [
-        { reason: "timeout", status: 504 },
-        { reason: "quota-exhausted", status: 429 },
-        { reason: "too-long", status: 400 },
-        { reason: "bad-request", status: 400 },
+    it("routes each failure reason straight through to onPolishError", async () => {
+      const cases: PolishResult[] = [
+        { ok: false, reason: "timeout" },
+        { ok: false, reason: "quota-exhausted" },
+        { ok: false, reason: "too-long" },
+        { ok: false, reason: "bad-request" },
+        { ok: false, reason: "upstream", status: 500 },
       ];
-      for (const { reason, status } of cases) {
+      for (const result of cases) {
         const deps = makeDeps();
-        const fetchImpl = vi.fn(async () =>
-          jsonResponse({ ok: false, reason }, { status }),
-        );
+        const fake = immediateClient(result);
         const onPolishError = vi.fn();
         const store = createEntriesStore({
           ...deps,
-          fetchImpl: fetchImpl as unknown as typeof fetch,
+          polishClient: fake.client,
           onPolishError,
         });
         const entry = store.add({
@@ -756,39 +824,23 @@ describe("entries-store", () => {
           rawTranscript: "todo x",
         });
         await store.polish(entry.id);
-        expect(onPolishError).toHaveBeenCalledWith(reason);
+        if (result.ok) continue;
+        expect(onPolishError).toHaveBeenCalledWith(result.reason);
       }
     });
 
-    it("coerces unknown reason strings to 'upstream'", async () => {
+    it("short-circuits oversized transcripts without calling the client", async () => {
       const deps = makeDeps();
-      const fetchImpl = vi.fn(async () =>
-        jsonResponse({ ok: false, reason: "teapot" }, { status: 418 }),
-      );
+      const fake = immediateClient({
+        ok: true,
+        polishedText: "x",
+        model: "m",
+        promptVersion: 1,
+      });
       const onPolishError = vi.fn();
       const store = createEntriesStore({
         ...deps,
-        fetchImpl: fetchImpl as unknown as typeof fetch,
-        onPolishError,
-      });
-      const entry = store.add({
-        category: "todo",
-        displayText: "x",
-        rawTranscript: "todo x",
-      });
-      await store.polish(entry.id);
-      expect(onPolishError).toHaveBeenCalledWith("upstream");
-    });
-
-    it("short-circuits oversized transcripts without calling fetch", async () => {
-      const deps = makeDeps();
-      const fetchImpl = vi.fn(async () =>
-        jsonResponse({ ok: true, polishedText: "x", model: "m", promptVersion: 1 }),
-      );
-      const onPolishError = vi.fn();
-      const store = createEntriesStore({
-        ...deps,
-        fetchImpl: fetchImpl as unknown as typeof fetch,
+        polishClient: fake.client,
         onPolishError,
       });
       const entry = store.add({
@@ -799,28 +851,28 @@ describe("entries-store", () => {
 
       await store.polish(entry.id);
 
-      expect(fetchImpl).not.toHaveBeenCalled();
+      expect(fake.calls).toHaveLength(0);
       expect(onPolishError).toHaveBeenCalledWith("too-long");
       expect(store.isPolishing(entry.id)).toBe(false);
-      expect(store.entries[0].polishedText).toBeNull();
+      expect(store.entries[0].polish).toBeNull();
     });
 
     it("does not short-circuit at exactly the 4000-char limit", async () => {
       const deps = makeDeps();
-      const fetchImpl = vi.fn(async () =>
-        jsonResponse({ ok: true, polishedText: "ok", model: "m", promptVersion: 1 }),
-      );
-      const store = createEntriesStore({
-        ...deps,
-        fetchImpl: fetchImpl as unknown as typeof fetch,
+      const fake = immediateClient({
+        ok: true,
+        polishedText: "ok",
+        model: "m",
+        promptVersion: 1,
       });
+      const store = createEntriesStore({ ...deps, polishClient: fake.client });
       const entry = store.add({
         category: "todo",
         displayText: "x",
         rawTranscript: "a".repeat(4000),
       });
       await store.polish(entry.id);
-      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect(fake.calls).toHaveLength(1);
     });
   });
 

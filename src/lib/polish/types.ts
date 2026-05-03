@@ -54,3 +54,24 @@ export const POLISH_FAILURE_MESSAGES: Record<PolishFailureReason, string> = {
 
 /** Maximum `rawTranscript` length accepted by the polish pipeline. */
 export const MAX_POLISH_TRANSCRIPT_CHARS = 4000;
+
+/**
+ * Shared wire contract between `/api/polish` and its clients.
+ *
+ * Lives here, not in `$lib/server/polish/gemini.ts`, because this is
+ * the type both the server route and the client adapter speak —
+ * client code must not import from `$lib/server/**`.
+ *
+ * The `upstream` arm carries a numeric `status` hint (0 when the
+ * originator didn't have an HTTP status to quote — e.g. network
+ * throw, missing API key). It's never surfaced in UX copy; it exists
+ * for logs and server-side tests.
+ */
+export type PolishResult =
+  | { ok: true; polishedText: string; model: string; promptVersion: number }
+  | { ok: false; reason: "too-long" }
+  | { ok: false; reason: "bad-request" }
+  | { ok: false; reason: "rate-limited"; retryAfterMs?: number }
+  | { ok: false; reason: "quota-exhausted"; retryAfterMs?: number }
+  | { ok: false; reason: "timeout" }
+  | { ok: false; reason: "upstream"; status: number };
