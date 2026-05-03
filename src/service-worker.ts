@@ -39,11 +39,18 @@ sw.addEventListener("fetch", (event) => {
 
   const url = new URL(event.request.url);
 
-  // Navigation requests (cold launch, reload) — serve the prerendered shell
-  // from cache so offline launch shows the UI instantly instead of a 503.
+  // Never let the SW handle auth / API traffic - these must hit the worker.
+  if (url.pathname.startsWith("/api/")) return;
+
+  // Navigation requests (cold launch, reload) — first try to fetch, then use
+  // cache as fallback. If cache not found, return a 503 error.
   if (event.request.mode === "navigate") {
     event.respondWith(
-      caches.match("/").then((cached) => cached ?? fetch(event.request)),
+      fetch(event.request).catch(() =>
+        caches
+          .match("/")
+          .then((cached) => cached ?? new Response("Offline", { status: 503 })),
+      ),
     );
     return;
   }
