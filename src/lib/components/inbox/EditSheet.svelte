@@ -5,7 +5,6 @@
   import { getEntriesContext } from "$lib/stores/entries-store.svelte";
   import { isBlank } from "$lib/utils/edit-text";
   import { effectiveText } from "$lib/utils/effective-text";
-  import { computeEditSave, REVERT_POLISH_PATCH } from "$lib/utils/edit-save";
   import type { Category } from "$lib/utils/transcript-parser";
 
   interface Props {
@@ -48,17 +47,15 @@
 
   function chooseCategory(category: Category) {
     if (category === entry.category) return;
-    store.update(entry.id, { category });
+    store.setCategory(entry.id, category);
   }
 
   function save() {
     if (blank) return;
-    // Three-case logic lives in `computeEditSave` so it can be unit-
-    // tested without a component harness. `null` means "no write" —
-    // critically, this preserves a polished entry when the user opened
-    // the sheet only to re-read.
-    const patch = computeEditSave(value, entry);
-    if (patch) store.update(entry.id, patch);
+    // The three-case save logic (no-op / polish-clear / plain write)
+    // lives inside `store.editText`, so the invariants are enforced
+    // structurally and can't be bypassed by callers.
+    store.editText(entry.id, value);
     onClose();
   }
 
@@ -67,7 +64,7 @@
   function revert() {
     // Clear polish metadata in one shot. `displayText` and
     // `rawTranscript` are untouched — long-press can re-polish.
-    store.update(entry.id, { ...REVERT_POLISH_PATCH });
+    store.revertPolish(entry.id);
     onClose();
   }
 </script>

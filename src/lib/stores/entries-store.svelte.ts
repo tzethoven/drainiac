@@ -9,6 +9,8 @@ import {
   createHttpPolishClient,
   type PolishClient,
 } from "$lib/polish/polish-client";
+import { effectiveText } from "$lib/utils/effective-text";
+import { isBlank, normalizeEditText } from "$lib/utils/edit-text";
 
 /**
  * Grouped polish metadata. All four fields move as one — CONTEXT.md
@@ -47,13 +49,12 @@ export interface Entry {
 }
 
 /**
- * Fields the app is allowed to patch through `update()`. User-editable
- * content (`displayText`, `category`, `done`) plus `polish`, which is
- * patched as a single value when an edit clears a polish or the user
- * reverts to original. `updatedAt` is always stamped by the store
- * itself.
+ * Internal reducer patch shape. Not exported: callers use the
+ * intent-named operations (`editText`, `setCategory`, `toggleDone`,
+ * `revertPolish`) which structurally enforce the polish invariants.
+ * `updatedAt` is always stamped by the store itself.
  */
-export type EntryUpdatePatch = Partial<
+type EntryUpdatePatch = Partial<
   Pick<Entry, "displayText" | "category" | "done"> & {
     polish: Polish | null;
   }
@@ -99,17 +100,40 @@ export interface EntriesStore {
   readonly entries: Entry[];
   byCategory(category: Category): Entry[];
   add(input: AddInput): Entry;
-  update(id: string, patch: EntryUpdatePatch): void;
+  /**
+   * Commit a user edit of the entry body. Encapsulates the three
+   * save-path cases:
+   *   1. Input (after whitespace-normalise) equals `effectiveText` →
+   *      no write, no `updatedAt` bump.
+   *   2. Input differs and the entry is polished → write the new
+   *      `displayText` and clear `polish` in one shot (the edit
+   *      becomes the canonical display).
+   *   3. Input differs and the entry is unpolished → write
+   *      `displayText` only.
+   * Blank input is a no-op (defence in depth; the EditSheet also
+   * disables Save while blank).
+   */
+  editText(id: string, displayText: string): void;
+  /** Change the entry's category. Does not touch polish metadata. */
+  setCategory(id: string, category: Category): void;
+  /** Flip `done`. Does not touch polish metadata. */
+  toggleDone(id: string): void;
+  /**
+   * Clear polish metadata while leaving `displayText` and
+   * `rawTranscript` untouched, so a re-polish remains available.
+   */
+  revertPolish(id: string): void;
   remove(id: string): void;
   restore(entry: Entry): void;
   clearDone(): void;
   /**
    * Trigger an AI polish for the given entry. No-op if the entry is
    * already polishing or already has `polish` set. On success the
-   * grouped `polish` field is applied via the normal update path; on
-   * failure `onPolishError` is called and the entry is left unchanged.
-   * If `update(id, …)` or `remove(id)` is called while the request is
-   * in flight, the eventual response is discarded silently.
+   * grouped `polish` field is applied; on failure `onPolishError` is
+   * called and the entry is left unchanged. If any user-initiated
+   * mutation (`editText` that writes, `setCategory`, `toggleDone`,
+   * `revertPolish`, `remove`) happens while the request is in flight,
+   * the eventual response is discarded silently.
    */
   polish(id: string): Promise<void>;
   /** Reactive: true iff a polish request is in flight for `id`. */
@@ -165,7 +189,13 @@ export function createEntriesStore(
     return entry;
   }
 
-  function update(id: string, patch: EntryUpdatePatch): void {
+  /**
+   * Internal reducer. Every user-initiated mutation funnels through
+   * here so the `polishingIds.delete(id)` + `updatedAt` stamp + write
+   * are guaranteed to move together. Callers are the intent-named
+   * operations below; external callers use those, not this.
+   */
+  function applyPatch(id: string, patch: EntryUpdatePatch): void {
     const idx = entries.findIndex((e) => e.id === id);
     if (idx === -1) return;
     // User-initiated change invalidates any in-flight polish.
@@ -174,6 +204,37 @@ export function createEntriesStore(
     const next: Entry = { ...current, ...patch, updatedAt: now() };
     entries = [...entries.slice(0, idx), next, ...entries.slice(idx + 1)];
     persist();
+  }
+
+  function editText(id: string, displayText: string): void {
+    if (isBlank(displayText)) return;
+    const entry = entries.find((e) => e.id === id);
+    if (!entry) return;
+    const normalized = normalizeEditText(displayText);
+    // Case 1: no-op when the normalised input matches what the user
+    // already sees. Must not bump `updatedAt` or clear polish.
+    if (normalized === effectiveText(entry)) return;
+    // Case 2: diverging edit on a polished entry — clear the quartet
+    // and let the edit become canonical. Case 3: plain write.
+    const patch: EntryUpdatePatch =
+      entry.polish != null
+        ? { displayText: normalized, polish: null }
+        : { displayText: normalized };
+    applyPatch(id, patch);
+  }
+
+  function setCategory(id: string, category: Category): void {
+    applyPatch(id, { category });
+  }
+
+  function toggleDone(id: string): void {
+    const entry = entries.find((e) => e.id === id);
+    if (!entry) return;
+    applyPatch(id, { done: !entry.done });
+  }
+
+  function revertPolish(id: string): void {
+    applyPatch(id, { polish: null });
   }
 
   function remove(id: string): void {
@@ -268,7 +329,10 @@ export function createEntriesStore(
       return entries.filter((e) => e.category === category);
     },
     add,
-    update,
+    editText,
+    setCategory,
+    toggleDone,
+    revertPolish,
     remove,
     restore,
     clearDone,

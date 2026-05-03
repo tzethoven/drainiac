@@ -155,7 +155,7 @@ describe("entries-store", () => {
     expect(second.entries[0].schemaVersion).toBe(3);
   });
 
-  it("update() mutates allowed fields and bumps updatedAt without changing createdAt", () => {
+  it("setCategory/toggleDone/editText mutate allowed fields and bump updatedAt without changing createdAt", () => {
     const deps = makeDeps();
     deps.setNow(1_000);
     const store = createEntriesStore(deps);
@@ -166,7 +166,9 @@ describe("entries-store", () => {
     });
 
     deps.setNow(5_000);
-    store.update(entry.id, { displayText: "Buy oat milk.", done: true, category: "note" });
+    store.editText(entry.id, "Buy oat milk.");
+    store.toggleDone(entry.id);
+    store.setCategory(entry.id, "note");
 
     const updated = store.entries[0];
     expect(updated.id).toBe(entry.id);
@@ -179,43 +181,150 @@ describe("entries-store", () => {
     expect(updated.rawTranscript).toBe("todo buy milk");
   });
 
-  it("update() merges a polish-clearing patch (polish: null)", () => {
-    const deps = makeDeps();
-    deps.setNow(1_000);
-    const store = createEntriesStore(deps);
-    const entry = store.add({
-      category: "todo",
-      displayText: "buy milk",
-      rawTranscript: "todo buy milk",
+  describe("editText", () => {
+    it("is a no-op when the input equals effectiveText on a never-polished entry (no updatedAt bump)", () => {
+      const deps = makeDeps();
+      deps.setNow(1_000);
+      const store = createEntriesStore(deps);
+      const entry = store.add({
+        category: "todo",
+        displayText: "Buy milk.",
+        rawTranscript: "todo buy milk",
+      });
+
+      deps.setNow(5_000);
+      store.editText(entry.id, "  Buy   milk.  ");
+
+      const after = store.entries[0];
+      expect(after.displayText).toBe("Buy milk.");
+      expect(after.updatedAt).toBe(1_000);
+      expect(after.polish).toBeNull();
     });
 
-    // Simulate a prior polish by patching `polish` directly through
-    // the widened update signature.
-    deps.setNow(2_000);
-    store.update(entry.id, {
-      polish: {
-        text: "Buy milk.",
-        at: 2_000,
+    it("is a no-op when the input equals polish.text on a polished entry (polish preserved, no updatedAt bump)", async () => {
+      const deps = makeDeps();
+      deps.setNow(1_000);
+      const fake = immediateClient({
+        ok: true,
+        polishedText: "Buy milk.",
         model: "test-model",
         promptVersion: 1,
-      },
-    });
-    expect(store.entries[0].polish).toEqual({
-      text: "Buy milk.",
-      at: 2_000,
-      model: "test-model",
-      promptVersion: 1,
+      });
+      const store = createEntriesStore({ ...deps, polishClient: fake.client });
+      const entry = store.add({
+        category: "todo",
+        displayText: "buy milk",
+        rawTranscript: "todo buy milk",
+      });
+      deps.setNow(2_000);
+      await store.polish(entry.id);
+      const polished = store.entries[0].polish;
+
+      deps.setNow(9_000);
+      store.editText(entry.id, "Buy milk.");
+
+      const after = store.entries[0];
+      expect(after.polish).toEqual(polished);
+      expect(after.displayText).toBe("buy milk");
+      expect(after.updatedAt).toBe(2_000);
     });
 
-    // Now clear the polish via the same path (the revert operation).
-    deps.setNow(3_000);
-    store.update(entry.id, { polish: null });
+    it("writes displayText and clears polish in one shot when input diverges from a polished entry", async () => {
+      const deps = makeDeps();
+      deps.setNow(1_000);
+      const fake = immediateClient({
+        ok: true,
+        polishedText: "Buy milk.",
+        model: "test-model",
+        promptVersion: 1,
+      });
+      const store = createEntriesStore({ ...deps, polishClient: fake.client });
+      const entry = store.add({
+        category: "todo",
+        displayText: "buy milk",
+        rawTranscript: "todo buy milk",
+      });
+      deps.setNow(2_000);
+      await store.polish(entry.id);
+      expect(store.entries[0].polish).not.toBeNull();
 
-    const after = store.entries[0];
-    expect(after.polish).toBeNull();
-    expect(after.updatedAt).toBe(3_000);
-    expect(after.displayText).toBe("buy milk");
-    expect(after.rawTranscript).toBe("todo buy milk");
+      deps.setNow(3_000);
+      store.editText(entry.id, "  Buy   oat milk.  ");
+
+      const after = store.entries[0];
+      expect(after.displayText).toBe("Buy oat milk.");
+      expect(after.polish).toBeNull();
+      expect(after.updatedAt).toBe(3_000);
+      expect(after.rawTranscript).toBe("todo buy milk");
+    });
+
+    it("writes displayText only (no polish field touched) on a never-polished diverging edit", () => {
+      const deps = makeDeps();
+      deps.setNow(1_000);
+      const store = createEntriesStore(deps);
+      const entry = store.add({
+        category: "todo",
+        displayText: "Buy milk.",
+        rawTranscript: "todo buy milk",
+      });
+
+      deps.setNow(3_000);
+      store.editText(entry.id, "Buy oat milk.");
+
+      const after = store.entries[0];
+      expect(after.displayText).toBe("Buy oat milk.");
+      expect(after.polish).toBeNull();
+      expect(after.updatedAt).toBe(3_000);
+    });
+
+    it("is a no-op on blank input (defence-in-depth)", () => {
+      const deps = makeDeps();
+      deps.setNow(1_000);
+      const store = createEntriesStore(deps);
+      const entry = store.add({
+        category: "todo",
+        displayText: "Buy milk.",
+        rawTranscript: "todo buy milk",
+      });
+
+      deps.setNow(5_000);
+      store.editText(entry.id, "   ");
+
+      const after = store.entries[0];
+      expect(after.displayText).toBe("Buy milk.");
+      expect(after.updatedAt).toBe(1_000);
+    });
+  });
+
+  describe("revertPolish", () => {
+    it("clears polish without touching displayText or rawTranscript, and bumps updatedAt", async () => {
+      const deps = makeDeps();
+      deps.setNow(1_000);
+      const fake = immediateClient({
+        ok: true,
+        polishedText: "Buy milk.",
+        model: "test-model",
+        promptVersion: 1,
+      });
+      const store = createEntriesStore({ ...deps, polishClient: fake.client });
+      const entry = store.add({
+        category: "todo",
+        displayText: "buy milk",
+        rawTranscript: "todo buy milk",
+      });
+      deps.setNow(2_000);
+      await store.polish(entry.id);
+      expect(store.entries[0].polish).not.toBeNull();
+
+      deps.setNow(3_000);
+      store.revertPolish(entry.id);
+
+      const after = store.entries[0];
+      expect(after.polish).toBeNull();
+      expect(after.displayText).toBe("buy milk");
+      expect(after.rawTranscript).toBe("todo buy milk");
+      expect(after.updatedAt).toBe(3_000);
+    });
   });
 
   it("remove() deletes the entry with the given id", () => {
@@ -238,8 +347,8 @@ describe("entries-store", () => {
     const c = store.add({ category: "idea", displayText: "C.", rawTranscript: "idea c" });
     const d = store.add({ category: "todo", displayText: "D.", rawTranscript: "todo d" });
 
-    store.update(a.id, { done: true });
-    store.update(c.id, { done: true });
+    store.toggleDone(a.id);
+    store.toggleDone(c.id);
 
     store.clearDone();
 
@@ -338,7 +447,7 @@ describe("entries-store", () => {
       rawTranscript: "todo buy milk",
     });
     deps.setNow(2_000);
-    first.update(entry.id, { done: true });
+    first.toggleDone(entry.id);
 
     const second = createEntriesStore({ storage: deps.storage });
     const rehydrated = second.entries[0];
@@ -583,7 +692,7 @@ describe("entries-store", () => {
       });
 
       const promise = store.polish(entry.id);
-      store.update(entry.id, { displayText: "edited" });
+      store.editText(entry.id, "edited");
       expect(store.isPolishing(entry.id)).toBe(false);
 
       fake.resolveNext({

@@ -135,7 +135,7 @@
   }
 
   function startCommitRight() {
-    store.update(entry.id, { done: !entry.done });
+    store.toggleDone(entry.id);
     startRebound();
   }
 

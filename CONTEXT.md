@@ -66,6 +66,16 @@ land; do use the agreed name when they do.
   `src/lib/stores/entries-migrations.ts`. Migration runs at store
   load and eagerly persists the upgraded array back to storage.
 
+  Mutation happens through intent-named store operations, never a
+  generic `update(patch)`: `editText(id, text)` commits a body edit
+  (no-op on unchanged input; clears `polish` in one shot when the
+  edit diverges from a polished entry); `setCategory(id, category)`
+  and `toggleDone(id)` do not touch polish; `revertPolish(id)` clears
+  `polish` while leaving `displayText` and `rawTranscript` intact so
+  a re-polish remains available. Because no external caller can
+  write `polish` directly, the "set together, cleared together"
+  invariant is enforced at the seam rather than by convention.
+
 - **Display Text** — the cleaned, user-facing form of an Entry's body.
   For voice: capitalised + trailing punctuation (see `cleanBody`). For
   text edits: literal after whitespace normalisation (see
