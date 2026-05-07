@@ -280,7 +280,7 @@ export function createEntriesStore(
 
     polishingIds.add(id);
     const result = await polishClient.polish({
-      rawTranscript: entry.rawTranscript,
+      rawTranscript: entry.displayText,
       category: entry.category,
     });
 
@@ -291,12 +291,18 @@ export function createEntriesStore(
     if (!polishingIds.delete(id)) return;
 
     if (result.ok) {
-      applyPolishResult(id, result.polishedText, result.model, result.promptVersion);
+      applyPolishResult(
+        id,
+        result.polishedText,
+        result.model,
+        result.promptVersion,
+      );
       return;
     }
 
     if (
-      (result.reason === "rate-limited" || result.reason === "quota-exhausted") &&
+      (result.reason === "rate-limited" ||
+        result.reason === "quota-exhausted") &&
       result.retryAfterMs !== undefined
     ) {
       onPolishError?.(result.reason, { retryAfterMs: result.retryAfterMs });
